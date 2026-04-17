@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% block title %}Collection Debug — Redwave{% endblock %}
+{% block content %}
+
+<div class="mb-6">
+  <h1 class="text-2xl font-bold text-white mb-1">Collection Comparison</h1>
+  <p class="text-muted text-sm">Navidrome: <span class="text-white font-semibold">{{ nav_total }}</span> albums &nbsp;·&nbsp; Redwave scanner: <span class="text-white font-semibold">{{ scan_total }}</span> albums</p>
+</div>
+
+{% if only_in_nav %}
+<section class="mb-10">
+  <h2 class="text-base font-semibold text-red-400 mb-3">In Navidrome but missing from Redwave scanner ({{ only_in_nav | length }})</h2>
+  <div class="overflow-x-auto">
+    <table class="w-full text-sm">
+      <thead>
+        <tr class="text-left text-xs text-muted uppercase tracking-wide border-b border-border">
+          <th class="pb-2 pr-6">Artist</th>
+          <th class="pb-2 pr-6">Album</th>
+          <th class="pb-2">Year</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for a in only_in_nav %}
+        <tr class="border-b border-border/40 hover:bg-card transition-colors">
+          <td class="py-2 pr-6 text-muted">{{ a.artist }}</td>
+          <td class="py-2 pr-6 text-white">{{ a.name }}</td>
+          <td class="py-2 text-muted">{{ a.year or '' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% else %}
+<p class="text-green-400 text-sm mb-8">Every Navidrome album is in the Redwave scanner.</p>
+{% endif %}
+
+{% if only_in_scan %}
+<section class="mb-10">
+  <h2 class="text-base font-semibold text-yellow-400 mb-3">In Redwave scanner but not in Navidrome ({{ only_in_scan | length }})</h2>
+  <div class="overflow-x-auto">
+    <table class="w-full text-sm">
+      <thead>
+        <tr class="text-left text-xs text-muted uppercase tracking-wide border-b border-border">
+          <th class="pb-2 pr-6">Artist</th>
+          <th class="pb-2 pr-6">Album</th>
+          <th class="pb-2">Year</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for a in only_in_scan %}
+        <tr class="border-b border-border/40 hover:bg-card transition-colors">
+          <td class="py-2 pr-6 text-muted">{{ a.artist }}</td>
+          <td class="py-2 pr-6 text-white">{{ a.album }}</td>
+          <td class="py-2 text-muted">{{ a.year or '' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endif %}
+
+{% endblock %}

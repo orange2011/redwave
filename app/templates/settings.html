@@ -1,0 +1,175 @@
+{% extends "base.html" %}
+{% block title %}Settings — Redwave{% endblock %}
+
+{% block content %}
+
+{% macro field(key, label, env, password=False, placeholder="", test="") %}
+<div class="test-row">
+  <label class="block text-sm text-gray-300 mb-1">{{ label }}</label>
+  <div class="flex gap-2">
+    <input
+      type="{{ 'password' if password else 'text' }}"
+      name="{{ key }}"
+      value="{{ env.get(key, '') }}"
+      placeholder="{{ placeholder }}"
+      autocomplete="off"
+      class="flex-1 bg-white border border-gray-300 text-gray-900 placeholder-gray-400 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent">
+    {% if test %}
+    <button type="button" onclick="testApi('{{ test }}', this)"
+      class="px-3 py-2 text-xs font-medium rounded-lg border border-border text-gray-300 hover:text-white hover:border-gray-500 transition-colors whitespace-nowrap">
+      Test
+    </button>
+    {% endif %}
+  </div>
+  {% if test %}<div class="test-status text-xs mt-1"></div>{% endif %}
+</div>
+{% endmacro %}
+
+<div class="max-w-2xl mx-auto">
+
+  <h1 class="text-2xl font-bold text-white mb-2">Settings</h1>
+  <p class="text-muted text-sm mb-8">Changes are saved to <code class="text-gray-300">.env</code> and applied immediately without restart.</p>
+
+  {% if saved %}
+  <div class="mb-6 px-4 py-3 rounded-lg text-sm font-medium" style="background:rgba(34,197,94,0.12); border:1px solid rgba(34,197,94,0.3); color:#22c55e;">
+    Settings saved.
+  </div>
+  {% endif %}
+
+  <form method="post" action="/settings">
+
+    <!-- Last.fm -->
+    <section class="mb-8">
+      <h2 class="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-4">Last.fm</h2>
+      <div class="space-y-3">
+        {{ field("LASTFM_API_KEY", "API Key", env, password=True, test="lastfm") }}
+        {{ field("LASTFM_SHARED_SECRET", "Shared Secret", env, password=True, test="lastfm-secret") }}
+        {{ field("LASTFM_USERNAME", "Username", env) }}
+
+        <!-- OAuth session -->
+        <div>
+          <label class="block text-sm text-gray-300 mb-1">Account Link</label>
+          {% if env.get("LASTFM_SESSION_KEY") %}
+            {% if lastfm_connected %}
+            <div class="mb-2 text-xs font-medium" style="color:#22c55e;">Connected as {{ lastfm_connected }}</div>
+            {% else %}
+            <div class="mb-2 text-xs font-medium" style="color:#22c55e;">Session key active</div>
+            {% endif %}
+            <button type="button"
+              onclick="fetch('/auth/lastfm/disconnect',{method:'POST'}).then(()=>location.reload())"
+              class="px-3 py-2 text-xs font-medium rounded-lg border border-border text-gray-300 hover:text-white hover:border-gray-500 transition-colors">
+              Disconnect
+            </button>
+          {% else %}
+            {% if lastfm_error %}
+            <div class="mb-2 text-xs" style="color:#f87171;">Connection failed: {{ lastfm_error }}</div>
+            {% endif %}
+            <a href="/auth/lastfm"
+              class="inline-block px-4 py-2 text-xs font-semibold rounded-lg text-white transition-colors"
+              style="background:#d51007;">
+              Connect Last.fm Account
+            </a>
+            <p class="text-xs text-gray-500 mt-1">Required for personalised recommendations.</p>
+          {% endif %}
+        </div>
+      </div>
+    </section>
+
+    <!-- Redacted -->
+    <section class="mb-8">
+      <h2 class="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-4">Redacted (RED)</h2>
+      {{ field("RED_API_KEY", "API Key", env, password=True, test="red") }}
+    </section>
+
+    <!-- ListenBrainz -->
+    <section class="mb-8">
+      <h2 class="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-4">ListenBrainz</h2>
+      <div class="space-y-3">
+        {{ field("LISTENBRAINZ_TOKEN", "Token", env, password=True, test="listenbrainz") }}
+        {{ field("LISTENBRAINZ_USERNAME", "Username", env, placeholder="leave blank if same as Last.fm") }}
+      </div>
+    </section>
+
+    <!-- Discogs -->
+    <section class="mb-8">
+      <h2 class="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-4">Discogs</h2>
+      {{ field("DISCOGS_TOKEN", "Token", env, password=True, test="discogs") }}
+    </section>
+
+    <!-- qBittorrent -->
+    <section class="mb-8">
+      <h2 class="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-4">qBittorrent</h2>
+      <div class="space-y-3">
+        {{ field("QBT_HOST", "Host URL", env, placeholder="http://localhost:8080", test="qbittorrent") }}
+        {{ field("QBT_USERNAME", "Username", env) }}
+        {{ field("QBT_PASSWORD", "Password", env, password=True) }}
+        {{ field("QBT_CATEGORY", "Torrent Category", env, placeholder="music") }}
+      </div>
+    </section>
+
+    <!-- Navidrome -->
+    <section class="mb-8">
+      <h2 class="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-4">Navidrome</h2>
+      <div class="space-y-3">
+        {{ field("NAVIDROME_URL", "Server URL", env, placeholder="http://localhost:4533", test="navidrome") }}
+        {{ field("NAVIDROME_USER", "Username", env) }}
+        {{ field("NAVIDROME_PASS", "Password", env, password=True) }}
+      </div>
+      <p class="text-xs text-gray-500 mt-3">
+        To auto-scan after Lidarr imports, add a Webhook connection in Lidarr → Settings → Connect:<br>
+        <code class="text-gray-300">http://&lt;your-server&gt;:8001/api/navidrome/scan</code>
+      </p>
+    </section>
+
+    <!-- Lidarr -->
+    <section class="mb-8">
+      <h2 class="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-4">Lidarr</h2>
+      <div class="space-y-3">
+        {{ field("LIDARR_URL", "Server URL", env, placeholder="http://localhost:8686", test="lidarr") }}
+        {{ field("LIDARR_API_KEY", "API Key", env, password=True) }}
+      </div>
+      <p class="text-xs text-gray-500 mt-3">
+        When you grab a torrent, Redwave will automatically add the artist to Lidarr as unmonitored so it can import and rename the download.
+      </p>
+    </section>
+
+    <!-- Paths -->
+    <section class="mb-8">
+      <h2 class="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-4">Paths</h2>
+      {{ field("MUSIC_DIR", "Music Directory", env, placeholder="W:/media/music", test="musicdir") }}
+    </section>
+
+    <button type="submit"
+      class="px-6 py-2.5 rounded-lg text-sm font-semibold text-white transition-colors"
+      style="background:#7c3aed;">
+      Save Settings
+    </button>
+  </form>
+</div>
+
+<script>
+function testApi(service, btn) {
+  const row = btn.closest('.test-row');
+  const status = row.querySelector('.test-status');
+  btn.disabled = true;
+  btn.textContent = 'Testing…';
+  status.textContent = '';
+  status.className = 'test-status text-xs mt-1';
+  fetch('/api/settings/test/' + service)
+    .then(r => r.json())
+    .then(d => {
+      status.textContent = d.msg;
+      status.classList.add(d.ok ? 'text-green-400' : 'text-red-400');
+    })
+    .catch(e => {
+      status.textContent = 'Request failed';
+      status.classList.add('text-red-400');
+    })
+    .finally(() => {
+      btn.disabled = false;
+      btn.textContent = 'Test';
+    });
+}
+</script>
+
+{% endblock %}

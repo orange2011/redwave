@@ -1,0 +1,188 @@
+{% extends "base.html" %}
+{% block title %}Redwave — Home{% endblock %}
+
+{% block content %}
+
+{% macro collection_badge(artist, album) %}
+{% if ((artist | normalize_artist) + '|' + (album | normalize_album | lower)) in collection_keys %}
+<img src="/static/check.svg" alt="In Collection"
+     style="position:absolute; top:5px; right:5px; width:22px; height:22px; filter:drop-shadow(0 1px 3px rgba(0,0,0,0.7)); z-index:1;">
+{% endif %}
+{% endmacro %}
+
+<!-- Weekly Exploration + Albums You Might Like -->
+<section class="mb-10">
+  <div class="flex items-baseline gap-3 mb-4">
+    <h2 class="text-lg font-semibold text-gray-300">Recommendations</h2>
+    <span class="text-xs text-muted">Week of {{ rec_week }}</span>
+  </div>
+
+  <!-- Weekly Exploration -->
+  {% for playlist in lb_playlists %}
+  {% if 'exploration' in playlist.title | lower and playlist.albums %}
+  <div class="flex items-baseline gap-2 mb-2">
+    <span class="text-xs text-muted uppercase tracking-wide">{{ playlist.title }}</span>
+  </div>
+  <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4 mb-6">
+    {% for a in playlist.albums if a.cover_url %}
+    <a href="/album/{{ a.album_mbid if a.album_mbid else '_' }}?artist={{ a.artist | urlencode }}&album={{ a.album | urlencode }}&cover={{ (a.cover_url or '') | urlencode }}{% if a.recommended_track %}&highlight={{ a.recommended_track | urlencode }}{% endif %}"
+       class="bg-card rounded-xl overflow-hidden hover:bg-cardHover hover:scale-105 transition-all duration-200 cursor-pointer block relative">
+      {{ collection_badge(a.artist, a.album) }}
+      {% if a.cover_url %}
+      <img src="{{ a.cover_url }}" alt="" class="w-full aspect-square object-cover"
+           onerror="this.outerHTML='<div class=\'w-full aspect-square bg-border flex items-center justify-center text-4xl text-gray-600\'>♪</div>'">
+      {% else %}
+      <div class="w-full aspect-square bg-border flex items-center justify-center text-4xl text-gray-600">♪</div>
+      {% endif %}
+      <div class="p-2">
+        <p class="text-white text-xs font-semibold truncate">{{ a.album }}</p>
+        <p class="text-muted text-xs truncate">{{ a.artist }}</p>
+        {% if a.recommended_track %}
+        <p class="text-xs truncate mt-0.5" style="color:#a238ff;">♪ {{ a.recommended_track }}</p>
+        {% endif %}
+      </div>
+    </a>
+    {% endfor %}
+  </div>
+  {% endif %}
+  {% endfor %}
+
+  <!-- Albums You Might Like -->
+  {% if recommendations %}
+  <div class="flex items-baseline gap-2 mb-2 mt-2">
+    <span class="text-xs text-muted uppercase tracking-wide">Albums you might like</span>
+  </div>
+  <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
+    {% for album in recommendations if album.cover_url %}
+    <a href="/album/{{ album.mb_id if album.mb_id else '_' }}?artist={{ album.artist | urlencode }}&album={{ album.album | urlencode }}&cover={{ (album.cover_url or '') | urlencode }}"
+       class="bg-card rounded-xl overflow-hidden hover:bg-cardHover hover:scale-105 transition-all duration-200 cursor-pointer block relative">
+      {{ collection_badge(album.artist, album.album) }}
+      {% if album.cover_url %}
+      <img src="{{ album.cover_url }}" alt="" class="w-full aspect-square object-cover"
+           onerror="this.outerHTML='<div class=\'w-full aspect-square bg-border flex items-center justify-center text-4xl text-gray-600\'>♪</div>'">
+      {% else %}
+      <div class="w-full aspect-square bg-border flex items-center justify-center text-4xl text-gray-600">♪</div>
+      {% endif %}
+      <div class="p-2">
+        <p class="text-white text-xs font-semibold truncate">{{ album.album }}</p>
+        <p class="text-muted text-xs truncate">{{ album.artist }}</p>
+      </div>
+    </a>
+    {% endfor %}
+  </div>
+  {% endif %}
+</section>
+
+<!-- Your Top Albums This Week -->
+<section class="mb-10">
+  <h2 class="text-lg font-semibold text-gray-300 mb-4">Your Top Albums This Week</h2>
+  {% if lastfm_albums %}
+  <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
+    {% for album in lastfm_albums %}
+    <a href="/album/{{ album.mb_id if album.mb_id else '_' }}?artist={{ album.artist | urlencode }}&album={{ album.album | urlencode }}&cover={{ (album.cover_url or '') | urlencode }}"
+       class="bg-card rounded-xl overflow-hidden hover:bg-cardHover hover:scale-105 transition-all duration-200 cursor-pointer block relative">
+      {{ collection_badge(album.artist, album.album) }}
+      {% if album.cover_url %}
+      <img src="{{ album.cover_url }}" alt="{{ album.album }}" class="w-full aspect-square object-cover">
+      {% else %}
+      <div class="w-full aspect-square bg-border flex items-center justify-center text-4xl text-gray-600">♪</div>
+      {% endif %}
+      <div class="p-2">
+        <p class="text-white text-xs font-semibold truncate">{{ album.album }}</p>
+        <p class="text-muted text-xs truncate">{{ album.artist }}</p>
+        <p class="text-accent text-xs">{{ album.playcount }} plays</p>
+      </div>
+    </a>
+    {% endfor %}
+  </div>
+  {% else %}
+  <p class="text-muted text-sm">No Last.fm data yet.</p>
+  {% endif %}
+</section>
+
+<!-- RED Top Albums Today -->
+{% if red_top %}
+<section class="mb-10">
+  <div class="flex items-baseline gap-3 mb-4">
+    <h2 class="text-lg font-semibold text-gray-300">Top on RED Today</h2>
+    <span class="text-xs text-muted">redacted.sh</span>
+  </div>
+  <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
+    {% for a in red_top %}
+    <a href="/album/_?artist={{ a.artist | urlencode }}&album={{ a.album | urlencode }}&cover={{ (a.cover_url or '') | urlencode }}"
+       class="bg-card rounded-xl overflow-hidden hover:bg-cardHover hover:scale-105 transition-all duration-200 cursor-pointer block relative">
+      {{ collection_badge(a.artist, a.album) }}
+      {% if a.cover_url %}
+      <img src="{{ a.cover_url }}" alt="{{ a.album }}" class="w-full aspect-square object-cover"
+           onerror="this.outerHTML='<div class=\'w-full aspect-square bg-border flex items-center justify-center text-4xl text-gray-600\'>♪</div>'">
+      {% else %}
+      <div class="w-full aspect-square bg-border flex items-center justify-center text-4xl text-gray-600">♪</div>
+      {% endif %}
+      <div class="p-2">
+        <p class="text-white text-xs font-semibold truncate">{{ a.album }}</p>
+        <p class="text-muted text-xs truncate">{{ a.artist }}</p>
+        {% if a.year %}<p class="text-xs text-gray-600">{{ a.year }}</p>{% endif %}
+      </div>
+    </a>
+    {% endfor %}
+  </div>
+</section>
+{% endif %}
+
+<!-- Recently Added -->
+{% if recently_added %}
+<section class="mb-10">
+  <h2 class="text-lg font-semibold text-gray-300 mb-4">Recently Added</h2>
+  <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
+    {% for a in recently_added %}
+    <a href="/album/{{ a.mb_id if a.mb_id else '_' }}?artist={{ a.artist | urlencode }}&album={{ a.album | urlencode }}&cover={{ (a.cover_url or '') | urlencode }}"
+       class="bg-card rounded-xl overflow-hidden hover:bg-cardHover hover:scale-105 transition-all duration-200 cursor-pointer block relative">
+      {{ collection_badge(a.artist, a.album) }}
+      {% if a.cover_url %}
+      <img src="{{ a.cover_url }}"
+           alt="{{ a.album }}"
+           class="w-full aspect-square object-cover"
+           onerror="this.outerHTML='<div class=\'w-full aspect-square bg-border flex items-center justify-center text-4xl text-gray-600\'>♪</div>'">
+      {% else %}
+      <div class="w-full aspect-square bg-border flex items-center justify-center text-4xl text-gray-600">♪</div>
+      {% endif %}
+      <div class="p-2">
+        <p class="text-white text-xs font-semibold truncate">{{ a.album }}</p>
+        <p class="text-muted text-xs truncate">{{ a.artist }}</p>
+      </div>
+    </a>
+    {% endfor %}
+  </div>
+</section>
+{% endif %}
+
+<!-- Weekly Jams -->
+{% for playlist in lb_playlists %}
+{% if 'jams' in playlist.title | lower and playlist.albums %}
+<section class="mb-10">
+  <div class="flex items-baseline gap-2 mb-4">
+    <h2 class="text-lg font-semibold text-gray-300">{{ playlist.title }}</h2>
+  </div>
+  <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
+    {% for a in playlist.albums if a.cover_url %}
+    <a href="/album/{{ a.album_mbid if a.album_mbid else '_' }}?artist={{ a.artist | urlencode }}&album={{ a.album | urlencode }}&cover={{ (a.cover_url or '') | urlencode }}"
+       class="bg-card rounded-xl overflow-hidden hover:bg-cardHover hover:scale-105 transition-all duration-200 cursor-pointer block relative">
+      {{ collection_badge(a.artist, a.album) }}
+      {% if a.cover_url %}
+      <img src="{{ a.cover_url }}" alt="" class="w-full aspect-square object-cover"
+           onerror="this.outerHTML='<div class=\'w-full aspect-square bg-border flex items-center justify-center text-4xl text-gray-600\'>♪</div>'">
+      {% else %}
+      <div class="w-full aspect-square bg-border flex items-center justify-center text-4xl text-gray-600">♪</div>
+      {% endif %}
+      <div class="p-2">
+        <p class="text-white text-xs font-semibold truncate">{{ a.album }}</p>
+        <p class="text-muted text-xs truncate">{{ a.artist }}</p>
+      </div>
+    </a>
+    {% endfor %}
+  </div>
+</section>
+{% endif %}
+{% endfor %}
+
+{% endblock %}

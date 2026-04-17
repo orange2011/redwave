@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block title %}Requests — Redwave{% endblock %}
+
+{% block content %}
+<div class="flex items-center justify-between mb-6">
+  <h1 class="text-2xl font-bold text-white">Requests</h1>
+  <span class="text-muted text-sm">{{ requests | length }} total</span>
+</div>
+
+{% if requests %}
+<div class="bg-card rounded-2xl border border-border overflow-hidden">
+  <table class="w-full">
+    <thead>
+      <tr class="border-b border-border text-muted text-xs uppercase tracking-wider">
+        <th class="text-left px-6 py-3">Album</th>
+        <th class="text-left px-6 py-3">Artist</th>
+        <th class="text-left px-6 py-3">Year</th>
+        <th class="text-left px-6 py-3">Status</th>
+        <th class="text-left px-6 py-3">Requested</th>
+      </tr>
+    </thead>
+    <tbody hx-get="/requests/active-rows" hx-trigger="every 15s" hx-swap="innerHTML">
+      {% for req in requests %}
+      <tr class="border-b border-border last:border-0 hover:bg-surface transition-colors">
+        <td class="px-6 py-4">
+          <div class="flex items-center gap-3">
+            {% if req.cover_url %}
+            <img src="{{ req.cover_url }}" class="w-10 h-10 rounded-lg object-cover">
+            {% else %}
+            <div class="w-10 h-10 rounded-lg bg-border flex items-center justify-center text-lg">🎵</div>
+            {% endif %}
+            <a href="/album/{{ req.musicbrainz_id }}" class="text-white text-sm font-medium hover:text-accent">{{ req.album }}</a>
+          </div>
+        </td>
+        <td class="px-6 py-4 text-gray-400 text-sm">{{ req.artist }}</td>
+        <td class="px-6 py-4 text-muted text-sm">{{ req.year }}</td>
+        <td class="px-6 py-4">
+          {% if req.status == "completed" %}
+          <span class="px-2 py-1 bg-green-900 text-green-300 rounded text-xs font-medium">✓ Completed</span>
+          {% elif req.status == "downloading" %}
+          <span class="px-2 py-1 bg-blue-900 text-blue-300 rounded text-xs font-medium">⬇ Downloading</span>
+          {% elif req.status == "failed" %}
+          <span class="px-2 py-1 bg-red-900 text-red-300 rounded text-xs font-medium">✗ Failed</span>
+          {% else %}
+          <span class="px-2 py-1 bg-yellow-900 text-yellow-300 rounded text-xs font-medium">⏳ {{ req.status | title }}</span>
+          {% endif %}
+        </td>
+        <td class="px-6 py-4 text-muted text-xs">{{ req.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<div class="text-center py-20">
+  <p class="text-5xl mb-4">🎵</p>
+  <p class="text-gray-400 text-lg">No requests yet</p>
+  <p class="text-muted text-sm mt-1">Search for an album and request it from RED</p>
+  <a href="/search" class="mt-4 inline-block px-5 py-2.5 bg-accent hover:bg-accentHover text-white rounded-xl text-sm font-semibold transition-colors">Search Albums</a>
+</div>
+{% endif %}
+{% endblock %}

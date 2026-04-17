@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}Redwave{% endblock %}</title>
+  <script>
+    tailwind = { config: {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            surface: '#0f0f17',
+            card: '#16161f',
+            cardHover: '#1e1e2e',
+            accent: '#c0392b',
+            accentHover: '#e74c3c',
+            muted: '#6b7280',
+            border: '#2a2a3a',
+          }
+        }
+      }
+    }}
+  </script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="/static/js/htmx.min.js"></script>
+  <style>
+    html {
+      background-color: #0f0f17;
+      background-image: url('/static/bg.jpg');
+      background-size: cover;
+      background-position: center;
+      background-attachment: fixed;
+    }
+    body {
+      background-color: rgba(15,15,23,0.45);
+    }
+    .htmx-indicator { display: none; }
+    .htmx-request .htmx-indicator { display: inline-block; }
+    .htmx-request.htmx-indicator { display: inline-block; }
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: #0f0f17; }
+    ::-webkit-scrollbar-thumb { background: #2a2a3a; border-radius: 3px; }
+  </style>
+  {% block head %}{% endblock %}
+</head>
+<body class="text-gray-100 min-h-screen">
+
+  <!-- Class primer: forces Tailwind to generate CSS for dynamically injected content -->
+  <div class="hidden">
+    <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 md:grid-cols-5 lg:grid-cols-5 lg:grid-cols-6 gap-4 gap-2"></div>
+    <a class="bg-card bg-cardHover bg-border bg-surface hover:bg-cardHover hover:scale-105 transition-all duration-200 rounded-xl overflow-hidden block group cursor-pointer"></a>
+    <div class="w-full h-full aspect-square object-cover overflow-hidden relative absolute inset-0 flex items-center justify-center justify-between"></div>
+    <p class="text-white text-gray-100 text-gray-200 text-gray-300 text-gray-400 text-gray-500 text-gray-600 text-muted text-accent text-green-400"></p>
+    <span class="text-xs text-sm text-lg text-2xl text-4xl text-xl font-semibold font-bold truncate rounded px-1.5 py-0.5 p-2 p-3 mt-1 mb-4"></span>
+    <div class="py-12 text-center hidden flex items-center justify-center text-4xl"></div>
+  </div>
+
+  <!-- Navbar -->
+  <nav class="fixed top-0 left-0 right-0 border-b border-border" style="z-index:1000; background:rgba(15,15,23,0.75); backdrop-filter:blur(12px); -webkit-backdrop-filter:blur(12px);">
+    <div class="max-w-7xl mx-auto px-4 h-14 flex items-center justify-between gap-4">
+      <a href="/" class="flex items-center gap-2 flex-shrink-0">
+        <span class="text-accent font-bold text-xl">Redwave</span>
+      </a>
+
+      <!-- Desktop nav -->
+      <div class="hidden sm:flex items-center gap-6">
+        <a href="/" class="text-sm text-gray-400 hover:text-white transition-colors">Home</a>
+        <a href="/search" class="text-sm text-gray-400 hover:text-white transition-colors">Search</a>
+        <a href="/collection" class="text-sm text-gray-400 hover:text-white transition-colors">Collection</a>
+        <a href="/settings" class="text-sm text-gray-400 hover:text-white transition-colors">Settings</a>
+        <a href="/logout" class="text-sm text-gray-400 hover:text-white transition-colors">Logout</a>
+      </div>
+
+      <!-- Desktop search bar -->
+      <div class="hidden sm:flex items-center">
+        <input type="text" name="q" placeholder="Search albums..."
+          class="bg-white border border-gray-300 rounded-lg px-3 py-1.5 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent w-48"
+          autocomplete="off"
+          onkeydown="if(event.key==='Enter'&&this.value.trim())window.location.href='/search?q='+encodeURIComponent(this.value.trim())">
+      </div>
+
+      <!-- Mobile hamburger -->
+      <button class="sm:hidden flex flex-col gap-1.5 p-2" onclick="document.getElementById('mobile-menu').classList.toggle('hidden')" aria-label="Menu">
+        <span class="block w-5 h-0.5 bg-gray-300"></span>
+        <span class="block w-5 h-0.5 bg-gray-300"></span>
+        <span class="block w-5 h-0.5 bg-gray-300"></span>
+      </button>
+    </div>
+
+    <!-- Mobile menu -->
+    <div id="mobile-menu" class="hidden sm:hidden border-t border-border px-4 py-3 space-y-3" style="background:rgba(15,15,23,0.95);">
+      <input type="text" name="q" placeholder="Search albums..."
+        class="w-full bg-white border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:border-accent"
+        autocomplete="off"
+        onkeydown="if(event.key==='Enter'&&this.value.trim()){window.location.href='/search?q='+encodeURIComponent(this.value.trim());document.getElementById('mobile-menu').classList.add('hidden');}">
+      <div class="flex flex-col gap-3 pb-1">
+        <a href="/" class="text-sm text-gray-300 hover:text-white transition-colors">Home</a>
+        <a href="/search" class="text-sm text-gray-300 hover:text-white transition-colors">Search</a>
+        <a href="/collection" class="text-sm text-gray-300 hover:text-white transition-colors">Collection</a>
+        <a href="/settings" class="text-sm text-gray-300 hover:text-white transition-colors">Settings</a>
+      </div>
+    </div>
+  </nav>
+
+  <!-- Main content -->
+  <main class="max-w-7xl mx-auto px-4 pt-20 pb-12">
+    {% block content %}{% endblock %}
+  </main>
+
+  <!-- Modal container -->
+  <div id="modal-container"></div>
+
+</body>
+</html>

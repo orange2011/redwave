@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% block title %}Search — Redwave{% endblock %}
+
+{% block head %}
+<style>
+  .search-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 1rem; }
+  @media (min-width: 640px)  { .search-grid { grid-template-columns: repeat(3, 1fr); } }
+  @media (min-width: 768px)  { .search-grid { grid-template-columns: repeat(4, 1fr); } }
+  @media (min-width: 1024px) { .search-grid { grid-template-columns: repeat(5, 1fr); } }
+  .album-card { background: #16161f; border-radius: 0.75rem; overflow: hidden; display: block; transition: all 0.2s; text-decoration: none; }
+  .album-card:hover { background: #1e1e2e; transform: scale(1.05); }
+  .album-cover { width: 100%; aspect-ratio: 1/1; background: #2a2a3a; display: flex; align-items: center; justify-content: center; overflow: hidden; font-size: 2.5rem; color: #374151; }
+  .album-cover img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .album-info { padding: 0.75rem; }
+  .album-name { color: #fff; font-size: 0.875rem; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-bottom: 0.15rem; }
+  .album-artist { color: #6b7280; font-size: 0.75rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .search-empty { color: #6b7280; text-align: center; padding: 3rem 0; }
+  .track-row { background: #16161f; }
+  .track-row:hover { background: #1e1e2e; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="mb-8">
+  <h1 class="text-2xl font-bold text-white mb-4">Search Albums</h1>
+  <input
+    id="search-input"
+    type="text"
+    value="{{ query }}"
+    placeholder="Artist name, album title, or paste a URL..."
+    class="w-full bg-white border border-gray-300 rounded-xl px-4 py-3 text-gray-900 placeholder-gray-400 focus:outline-none focus:border-accent text-lg"
+    autofocus
+    autocomplete="off"
+  >
+</div>
+
+<div id="results-grid">
+  {% include "partials/search_results.html" %}
+</div>
+
+<script>
+  const input = document.getElementById('search-input');
+  const grid = document.getElementById('results-grid');
+  let timer;
+
+  input.addEventListener('input', () => {
+    clearTimeout(timer);
+    const q = input.value.trim();
+    timer = setTimeout(async () => {
+      try {
+        const res = await fetch(`/search?q=${encodeURIComponent(q)}`, {
+          headers: { 'HX-Request': 'true' }
+        });
+        grid.innerHTML = await res.text();
+      } catch(e) {}
+    }, 400);
+  });
+</script>
+{% endblock %}

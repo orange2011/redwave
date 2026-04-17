@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block title %}Collection — Redwave{% endblock %}
+
+{% block content %}
+<div class="flex items-center justify-between mb-6">
+  <div class="flex items-baseline gap-3">
+    <h1 class="text-2xl font-bold text-white">Collection</h1>
+    <span class="text-sm text-muted" id="collection-stats">{{ total }} albums</span>
+  </div>
+  <button
+    hx-post="/api/collection/refresh"
+    hx-target="#collection-stats"
+    hx-swap="outerHTML"
+    class="text-xs px-3 py-1.5 rounded-lg border border-border text-muted hover:text-white hover:border-gray-500 transition-colors">
+    Refresh
+  </button>
+</div>
+
+<!-- Search -->
+<form method="get" action="/collection" class="mb-6">
+  <input type="text" name="q" value="{{ query }}"
+    placeholder="Search your collection..."
+    class="w-full bg-white border border-gray-300 text-gray-900 placeholder-gray-400 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent">
+</form>
+
+{% if query %}
+<p class="text-sm text-muted mb-4">{{ total }} result{{ 's' if total != 1 }} for "{{ query }}"</p>
+{% endif %}
+
+{% if albums %}
+<div class="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-8 gap-3">
+  {% for a in albums %}
+  <div class="cursor-pointer group"
+       onclick="window.location='/album/{{ a.mb_id if a.mb_id else '_' }}?artist={{ a.artist | urlencode }}&album={{ a.album | urlencode }}&cover={{ (a.cover_url or '') | urlencode }}'">
+    <img src="{{ a.cover_url }}"
+         alt="{{ a.album }}"
+         loading="lazy"
+         class="w-full aspect-square object-cover rounded-lg group-hover:opacity-80 transition-opacity mb-2"
+         onerror="this.outerHTML='<div class=\'w-full aspect-square bg-border rounded-lg flex items-center justify-center text-4xl text-gray-600 mb-2\'>♪</div>'">
+    <p class="text-white text-xs font-semibold truncate leading-tight">{{ a.album }}</p>
+    <a href="/artist/{{ a.artist | urlencode }}"
+       class="text-muted text-xs truncate block hover:text-white transition-colors leading-tight mt-0.5"
+       onclick="event.stopPropagation()">{{ a.artist }}</a>
+  </div>
+  {% endfor %}
+</div>
+{% else %}
+<p class="text-muted text-center py-16">No albums found{% if query %} for "{{ query }}"{% endif %}.</p>
+{% endif %}
+
+{% endblock %}

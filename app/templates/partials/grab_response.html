@@ -1,0 +1,10 @@
+<!-- Close modal and show success toast -->
+<div class="fixed bottom-6 right-6 z-50 bg-green-700 text-white px-5 py-3 rounded-xl shadow-lg text-sm font-medium"
+     id="grab-toast"
+     hx-on::load="setTimeout(() => document.getElementById('grab-toast').remove(), 4000)">
+  {% if album_request.status == "downloading" %}
+  ✓ Sent to qBittorrent — {{ artist }} · {{ album }}
+  {% else %}
+  ✗ Failed to send to qBittorrent
+  {% endif %}
+</div>

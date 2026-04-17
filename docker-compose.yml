@@ -1,0 +1,11 @@
+services:
+  redwave:
+    build: .
+    container_name: redwave
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./redwave.db:/app/redwave.db
+    env_file:
+      - .env
+    restart: unless-stopped

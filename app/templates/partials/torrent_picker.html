@@ -1,0 +1,119 @@
+<!-- Modal overlay -->
+<div class="fixed inset-0 bg-black bg-opacity-80 z-50 flex items-center justify-center p-4"
+     onclick="if(event.target===this)this.remove()">
+  <div style="background:#1a1a2e; border:1px solid rgba(255,255,255,0.1); border-radius:0.5rem; width:100%; max-width:900px; max-height:85vh; display:flex; flex-direction:column;"
+       onclick="event.stopPropagation()">
+
+    <!-- Header -->
+    <div style="display:flex; align-items:center; justify-content:space-between; padding:1rem 1.25rem; border-bottom:1px solid rgba(255,255,255,0.08);">
+      <h2 style="color:#fff; font-weight:600; font-size:1rem; margin:0;">
+        Interactive Search — {{ artist }} - {{ album }}{% if year %} ({{ year }}){% endif %}
+      </h2>
+      <button onclick="document.getElementById('modal-container').innerHTML=''"
+              style="color:#6b7280; background:none; border:none; font-size:1.2rem; cursor:pointer; line-height:1;">✕</button>
+    </div>
+
+    <!-- Table -->
+    <div style="overflow-y:auto; flex:1;">
+      {% if error %}
+      <div style="padding:3rem; text-align:center; color:#f87171;">
+        <p style="font-weight:600;">RED API Error</p>
+        <p style="font-size:.8rem; margin-top:.5rem; color:#9ca3af;">{{ error }}</p>
+      </div>
+      {% elif torrents %}
+      <table style="width:100%; border-collapse:collapse; font-size:0.8rem;">
+        <thead>
+          <tr style="color:#6b7280; text-transform:uppercase; font-size:0.7rem; letter-spacing:.05em; border-bottom:1px solid rgba(255,255,255,0.08);">
+            <th style="padding:.6rem 1rem; text-align:left; font-weight:500;">Source</th>
+            <th style="padding:.6rem .75rem; text-align:left; font-weight:500;">Age</th>
+            <th style="padding:.6rem .75rem; text-align:left; font-weight:500; width:99%;">Title</th>
+            <th style="padding:.6rem .75rem; text-align:right; font-weight:500; white-space:nowrap;">Size</th>
+            <th style="padding:.6rem .75rem; text-align:center; font-weight:500;">Peers</th>
+            <th style="padding:.6rem .75rem; text-align:left; font-weight:500;">Quality</th>
+            <th style="padding:.6rem 1rem;"></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for t in torrents %}
+          <tr style="border-bottom:1px solid rgba(255,255,255,0.05); transition:background .15s;"
+              onmouseover="this.style.background='rgba(255,255,255,0.04)'"
+              onmouseout="this.style.background=''">
+            <!-- Source -->
+            <td style="padding:.65rem 1rem;">
+              <span style="background:#1db954; color:#fff; font-size:.65rem; font-weight:700; padding:.2rem .5rem; border-radius:.25rem; letter-spacing:.03em;">RED</span>
+            </td>
+            <!-- Age -->
+            <td style="padding:.65rem .75rem; color:#6b7280; white-space:nowrap;">{{ t.age_days }}d</td>
+            <!-- Title -->
+            <td style="padding:.65rem .75rem;">
+              <a href="https://redacted.sh/torrents.php?id={{ t.red_group_id }}" target="_blank"
+                 style="color:#e5e7eb; text-decoration:none;"
+                 onmouseover="this.style.color='#a78bfa'"
+                 onmouseout="this.style.color='#e5e7eb'">{{ t.title }}</a>
+            </td>
+            <!-- Size -->
+            <td style="padding:.65rem .75rem; color:#9ca3af; text-align:right; white-space:nowrap;">{{ t.size_human }}</td>
+            <!-- Peers -->
+            <td style="padding:.65rem .75rem; text-align:center; white-space:nowrap;">
+              <span style="color:#4ade80;">{{ t.seeders }}</span>
+              <span style="color:#6b7280;">/</span>
+              <span style="color:#f87171;">{{ t.leechers }}</span>
+            </td>
+            <!-- Quality badges -->
+            <td style="padding:.65rem .75rem; white-space:nowrap;">
+              {% if t.format == "FLAC" and t.encoding in ("Lossless", "24bit Lossless") %}
+              <span style="background:rgba(74,222,128,.15); color:#4ade80; border:1px solid rgba(74,222,128,.3); font-size:.65rem; padding:.15rem .4rem; border-radius:.2rem; margin-right:.2rem;">{{ t.encoding }}</span>
+              {% elif t.format == "MP3" %}
+              <span style="background:rgba(96,165,250,.15); color:#60a5fa; border:1px solid rgba(96,165,250,.3); font-size:.65rem; padding:.15rem .4rem; border-radius:.2rem; margin-right:.2rem;">{{ t.encoding }}</span>
+              {% endif %}
+              {% if t.freeleech %}
+              <span style="background:rgba(250,204,21,.15); color:#facc15; border:1px solid rgba(250,204,21,.3); font-size:.65rem; padding:.15rem .4rem; border-radius:.2rem;">FL</span>
+              {% endif %}
+              {% if t.has_log %}
+              <span style="background:rgba(167,139,250,.15); color:#a78bfa; border:1px solid rgba(167,139,250,.3); font-size:.65rem; padding:.15rem .4rem; border-radius:.2rem;">Log {{ t.log_score }}%</span>
+              {% endif %}
+            </td>
+            <!-- Grab button -->
+            <td style="padding:.65rem 1rem;">
+              <form hx-post="/api/torrents/grab" hx-target="#modal-container" style="margin:0;">
+                <input type="hidden" name="mb_id"          value="{{ mb_id }}">
+                <input type="hidden" name="artist"         value="{{ artist }}">
+                <input type="hidden" name="album"          value="{{ album }}">
+                <input type="hidden" name="year"           value="{{ year }}">
+                <input type="hidden" name="cover_url"      value="{{ cover_url }}">
+                <input type="hidden" name="red_torrent_id" value="{{ t.red_torrent_id }}">
+                <input type="hidden" name="red_group_id"   value="{{ t.red_group_id }}">
+                <input type="hidden" name="format"         value="{{ t.format }}">
+                <input type="hidden" name="encoding"       value="{{ t.encoding }}">
+                <input type="hidden" name="size_bytes"     value="{{ t.size_bytes }}">
+                <input type="hidden" name="seeders"        value="{{ t.seeders }}">
+                <button type="submit"
+                        style="background:#16a34a; color:#fff; border:none; border-radius:.3rem; padding:.35rem .85rem; font-size:.75rem; font-weight:600; cursor:pointer; white-space:nowrap; transition:background .15s;"
+                        onmouseover="this.style.background='#15803d'"
+                        onmouseout="this.style.background='#16a34a'">
+                  Grab
+                </button>
+              </form>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <div style="padding:3rem; text-align:center; color:#6b7280;">
+        <p>No results found on RED for this album.</p>
+        <p style="font-size:.8rem; margin-top:.5rem; color:#4b5563;">Try searching manually on RED.</p>
+      </div>
+      {% endif %}
+    </div>
+
+    <!-- Footer -->
+    <div style="padding:.75rem 1.25rem; border-top:1px solid rgba(255,255,255,0.08); display:flex; justify-content:flex-end;">
+      <button onclick="document.getElementById('modal-container').innerHTML=''"
+              style="background:rgba(255,255,255,0.08); color:#9ca3af; border:1px solid rgba(255,255,255,0.12); border-radius:.3rem; padding:.4rem 1rem; font-size:.8rem; cursor:pointer;">
+        Close
+      </button>
+    </div>
+
+  </div>
+</div>

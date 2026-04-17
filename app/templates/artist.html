@@ -1,0 +1,149 @@
+{% extends "base.html" %}
+{% block title %}{{ artist }} — Redwave{% endblock %}
+
+{% block content %}
+
+{% if info.image %}
+<div style="
+  position: fixed; inset: 0; z-index: 0;
+  background-image: url('{{ info.image }}');
+  background-size: cover; background-position: center;
+  filter: blur(80px) brightness(0.2) saturate(1.4);
+  transform: scale(1.1); pointer-events: none;
+"></div>
+{% endif %}
+
+<div style="position: relative; z-index: 1;">
+
+  <!-- Hero -->
+  <div style="background:rgba(10,10,18,0.75); border:1px solid rgba(255,255,255,0.07); padding:1.5rem; margin-bottom:0;">
+    <div class="flex flex-col sm:flex-row gap-5 items-center sm:items-end">
+      {% if info.image %}
+      <img src="{{ info.image }}" alt="{{ artist }}"
+           class="w-28 h-28 sm:w-40 sm:h-40 flex-shrink-0"
+           style="object-fit:cover; border-radius:50%; box-shadow:0 8px 32px rgba(0,0,0,0.6);">
+      {% else %}
+      <div class="w-28 h-28 sm:w-40 sm:h-40 flex-shrink-0 rounded-full bg-card flex items-center justify-center text-5xl">♪</div>
+      {% endif %}
+
+      <div class="flex-1 min-w-0 text-center sm:text-left">
+        <p class="text-muted text-xs uppercase tracking-widest mb-1">Artist</p>
+        <h1 class="text-3xl sm:text-5xl font-bold text-white mb-3 break-words">{{ artist }}</h1>
+
+        {% if info.listeners or info.playcount %}
+        <div class="flex flex-wrap justify-center sm:justify-start gap-4 text-sm mb-3">
+          {% if info.listeners %}
+          <span class="text-gray-400"><span class="text-white font-semibold">{{ "{:,}".format(info.listeners) }}</span> listeners</span>
+          {% endif %}
+          {% if info.playcount %}
+          <span class="text-gray-400"><span class="text-white font-semibold">{{ "{:,}".format(info.playcount) }}</span> scrobbles</span>
+          {% endif %}
+        </div>
+        {% endif %}
+
+        {% if info.tags %}
+        <div class="flex flex-wrap justify-center sm:justify-start gap-1 mb-4">
+          {% for tag in info.tags[:5] %}
+          <span class="text-xs px-2 py-0.5 rounded-full bg-surface border border-border text-muted">{{ tag }}</span>
+          {% endfor %}
+        </div>
+        {% endif %}
+
+        <div class="flex items-center justify-center sm:justify-start gap-1">
+          {% for link in external_links %}
+          <a href="{{ link.url }}" target="_blank" rel="noopener noreferrer"
+             title="{{ link.name }}" style="color:{{ link.color }}"
+             class="p-2 rounded-lg hover:bg-white hover:bg-opacity-10 transition-colors inline-flex items-center justify-center">
+            <span style="width:22px;height:22px;display:flex;align-items:center;justify-content:center;">
+              {{ (link.name | service_logo | replace('width="14"','width="22"') | replace('height="14"','height="22"')) | safe }}
+            </span>
+          </a>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Bio -->
+  {% if info.bio %}
+  <div style="background:rgba(10,10,18,0.75); border:1px solid rgba(255,255,255,0.07); border-top:none; padding:1.5rem; margin-bottom:0;">
+    <h2 class="text-sm font-semibold text-gray-400 uppercase tracking-wide mb-2">About {{ artist }}</h2>
+    <p class="text-gray-300 text-sm leading-relaxed">{{ info.bio }}</p>
+  </div>
+  {% endif %}
+
+  <!-- Similar artists -->
+  {% if info.similar %}
+  <div style="background:rgba(10,10,18,0.75); border:1px solid rgba(255,255,255,0.07); border-top:none; padding:1rem 1.5rem; margin-bottom:0;">
+    <span class="text-xs text-muted uppercase tracking-wide" style="margin-right:0.75rem;">Similar artists</span>
+    {% for s in info.similar %}
+    <a href="/artist/{{ s.name | urlencode }}"
+       class="text-xs text-gray-300 hover:text-white transition-colors">{{ s.name }}</a>{% if not loop.last %}<span style="color:#6b7280; margin:0 0.5rem;">·</span>{% endif %}
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  <!-- Discography -->
+  {% if discography %}
+  <div style="background:rgba(10,10,18,0.75); border:1px solid rgba(255,255,255,0.07); border-top:none; padding:1.5rem; margin-bottom:2rem;">
+    <h2 class="text-lg font-semibold text-gray-300 mb-4">Discography</h2>
+
+    <!-- Tabs -->
+    <div class="flex flex-wrap gap-2 mb-6">
+      <button onclick="filterDisc('all')" id="tab-all"
+        class="disc-tab px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors"
+        style="background:#7c3aed; color:#fff;">All</button>
+      {% for label in discography.keys() %}
+      <button onclick="filterDisc('{{ loop.index }}')" id="tab-{{ loop.index }}"
+        class="disc-tab px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors"
+        style="background:rgba(255,255,255,0.06); color:#9ca3af;">
+        {{ label }} <span style="color:#6b7280;">({{ discography[label] | length }})</span>
+      </button>
+      {% endfor %}
+    </div>
+
+    {% for label, releases in discography.items() %}
+    <div class="disc-section mb-8" data-section="{{ loop.index }}">
+      <h3 class="text-xs font-semibold text-gray-500 uppercase tracking-widest mb-3">{{ label }}</h3>
+      <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
+        {% for r in releases %}
+        <a href="/album/{{ r.mb_id if r.mb_id else '_' }}?artist={{ artist | urlencode }}&album={{ r.album | urlencode }}&cover={{ (r.nav_cover or r.cover_url or '') | urlencode }}"
+           class="bg-cardHover rounded-xl overflow-hidden hover:scale-105 transition-all duration-200 cursor-pointer block relative">
+          {% if r.in_collection %}
+          <img src="/static/check.svg" alt="In Collection"
+               style="position:absolute; top:5px; right:5px; width:20px; height:20px; filter:drop-shadow(0 1px 3px rgba(0,0,0,0.7)); z-index:1;">
+          {% endif %}
+          {% set cover = r.nav_cover if r.in_collection and r.nav_cover else r.cover_url %}
+          {% if cover %}
+          <img src="{{ cover }}" alt="{{ r.album }}" class="w-full aspect-square object-cover"
+               onerror="this.outerHTML='<div class=\'w-full aspect-square bg-border flex items-center justify-center text-4xl text-gray-600\'>♪</div>'">
+          {% else %}
+          <div class="w-full aspect-square bg-border flex items-center justify-center text-4xl text-gray-600">♪</div>
+          {% endif %}
+          <div class="p-2">
+            <p class="text-white text-xs font-semibold truncate">{{ r.album }}</p>
+            {% if r.year %}<p class="text-muted text-xs">{{ r.year }}</p>{% endif %}
+          </div>
+        </a>
+        {% endfor %}
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+
+  <script>
+  function filterDisc(key) {
+    document.querySelectorAll('.disc-section').forEach(s => {
+      s.style.display = (key === 'all' || s.dataset.section === key) ? 'block' : 'none';
+    });
+    document.querySelectorAll('.disc-tab').forEach(b => {
+      const active = b.id === 'tab-' + key;
+      b.style.background = active ? '#7c3aed' : 'rgba(255,255,255,0.06)';
+      b.style.color = active ? '#fff' : '#9ca3af';
+    });
+  }
+  </script>
+  {% endif %}
+
+</div>
+{% endblock %}

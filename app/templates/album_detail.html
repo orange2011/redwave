@@ -1,0 +1,293 @@
+{% extends "base.html" %}
+{% block title %}{{ artist }} - {{ album }} — Redwave{% endblock %}
+
+{% block content %}
+{% if cover_url %}
+<div style="
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  background-image: url('{{ cover_url }}');
+  background-size: cover;
+  background-position: center;
+  filter: blur(80px) brightness(0.25) saturate(1.4);
+  transform: scale(1.1);
+  pointer-events: none;
+"></div>
+{% endif %}
+<div style="position: relative; z-index: 1;">
+<div style="background: rgba(10,10,18,0.75); border: 1px solid rgba(255,255,255,0.07); border-bottom: none; border-radius: 0; padding: 2rem; backdrop-filter: blur(8px);">
+<div class="flex flex-col md:flex-row gap-8">
+  <!-- Cover -->
+  <div class="flex-shrink-0 flex justify-center md:block">
+    {% if cover_url %}
+    <img src="{{ cover_url }}" alt="{{ album }}" onclick="openLightbox(this.src)"
+         class="w-56 h-56 md:w-64 md:h-64 object-cover rounded-2xl shadow-2xl cursor-zoom-in">
+    {% else %}
+    <div class="w-56 h-56 md:w-64 md:h-64 bg-card rounded-2xl flex items-center justify-center text-7xl shadow-2xl">♪</div>
+    {% endif %}
+  </div>
+
+  <!-- Info -->
+  <div class="flex flex-col justify-end">
+    <p class="text-muted text-sm uppercase tracking-wider mb-1">{{ release_type }}</p>
+    <div class="flex flex-wrap items-center gap-3 mb-2">
+      <h1 class="text-3xl md:text-4xl font-bold text-white">{{ album }}</h1>
+      {% if in_collection %}
+      <span title="Already in your collection" class="flex-shrink-0 text-xs font-semibold px-2 py-1 rounded-full" style="background:rgba(34,197,94,0.15); color:#22c55e; border:1px solid rgba(34,197,94,0.3);">
+        In Collection
+      </span>
+      {% endif %}
+    </div>
+    <div class="flex flex-wrap items-center gap-x-1 mb-3">
+      {% set artist_parts = artist.split(' / ') %}
+      {% for part in artist_parts %}
+      <a href="/artist/{{ part.strip() | urlencode }}" class="text-xl text-gray-300 hover:text-white transition-colors">{{ part.strip() }}</a>
+      {% if not loop.last %}<span class="text-gray-600 text-xl mx-1">/</span>{% endif %}
+      {% endfor %}
+    </div>
+
+    <!-- Meta row -->
+    <div class="flex flex-wrap gap-x-5 gap-y-1 text-sm text-muted mb-3">
+      {% if release_date %}
+      <span><span class="text-gray-500 text-xs uppercase tracking-wide">Released</span> <span class="text-gray-300">{{ release_date }}</span></span>
+      {% endif %}
+      {% if label %}
+      <span><span class="text-gray-500 text-xs uppercase tracking-wide">Label</span> <span class="text-gray-300">{{ label }}</span></span>
+      {% endif %}
+      {% if track_count %}
+      <span><span class="text-gray-500 text-xs uppercase tracking-wide">Tracks</span> <span class="text-gray-300">{{ track_count }}</span></span>
+      {% endif %}
+      {% if genre %}
+      <span><span class="text-gray-500 text-xs uppercase tracking-wide">Genre</span> <span class="text-gray-300">{{ genre }}</span></span>
+      {% endif %}
+    </div>
+
+    <!-- Last.fm stats -->
+    {% if listeners or playcount %}
+    <div class="flex gap-5 text-sm mb-3">
+      {% if listeners %}
+      <span class="text-gray-400"><span class="text-white font-semibold">{{ "{:,}".format(listeners) }}</span> listeners</span>
+      {% endif %}
+      {% if playcount %}
+      <span class="text-gray-400"><span class="text-white font-semibold">{{ "{:,}".format(playcount) }}</span> scrobbles</span>
+      {% endif %}
+    </div>
+    {% endif %}
+
+    {% if tags %}
+    <div class="flex flex-wrap gap-1 mb-4">
+      {% for tag in tags[:5] %}
+      <span class="text-xs px-2 py-0.5 rounded-full bg-surface border border-border text-muted">{{ tag }}</span>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+    <!-- Action buttons -->
+    <div class="flex gap-3 flex-wrap mb-4">
+      <button
+        hx-get="/api/torrents/search?mb_id={{ real_mb_id }}&artist={{ artist | urlencode }}&album={{ album | urlencode }}&year={{ year }}&cover_url={{ cover_url | urlencode if cover_url else '' }}"
+        hx-target="#modal-container"
+        hx-indicator="#request-spinner"
+        style="box-shadow: 0 0 0 1px rgba(192,57,43,0.6), 0 4px 14px rgba(192,57,43,0.35);"
+        class="px-6 py-2.5 bg-accent hover:bg-accentHover text-white font-bold tracking-wide transition-all cursor-pointer uppercase text-sm">
+        Find on RED
+      </button>
+      <span id="request-spinner" class="htmx-indicator text-muted self-center text-sm">Searching RED...</span>
+      <a href="{{ yt_url }}" target="_blank" title="YouTube Preview"
+         class="hover:opacity-80 transition-all flex items-center justify-center">
+        <svg width="56" height="40" viewBox="0 -7 48 48" xmlns="http://www.w3.org/2000/svg">
+          <g fill="#CE1312" transform="translate(-200,-368)">
+            <path d="M219.044,391.269916 L219.0425,377.687742 L232.0115,384.502244 L219.044,391.269916 Z M247.52,375.334163 C247.52,375.334163 247.0505,372.003199 245.612,370.536366 C243.7865,368.610299 241.7405,368.601235 240.803,368.489448 C234.086,368 224.0105,368 224.0105,368 L223.9895,368 C223.9895,368 213.914,368 207.197,368.489448 C206.258,368.601235 204.2135,368.610299 202.3865,370.536366 C200.948,372.003199 200.48,375.334163 200.48,375.334163 C200.48,375.334163 200,379.246723 200,383.157773 L200,386.82561 C200,390.73817 200.48,394.64922 200.48,394.64922 C200.48,394.64922 200.948,397.980184 202.3865,399.447016 C204.2135,401.373084 206.612,401.312658 207.68,401.513574 C211.52,401.885191 224,402 224,402 C224,402 234.086,401.984894 240.803,401.495446 C241.7405,401.382148 243.7865,401.373084 245.612,399.447016 C247.0505,397.980184 247.52,394.64922 247.52,394.64922 C247.52,394.64922 248,390.73817 248,386.82561 L248,383.157773 C248,379.246723 247.52,375.334163 247.52,375.334163 Z"/>
+          </g>
+        </svg>
+      </a>
+    </div>
+
+    <!-- Platform links — icon only -->
+    {% if platform_links %}
+    <div class="flex items-center gap-1">
+      {% for p in platform_links %}
+      <a href="{{ p.url }}" target="_blank" rel="noopener noreferrer"
+         title="{{ p.name }}"
+         style="color: {{ p.color }}"
+         class="p-2 rounded-lg hover:bg-white hover:bg-opacity-10 transition-colors inline-flex items-center justify-center">
+        <span style="width:22px;height:22px;display:flex;align-items:center;justify-content:center;">
+          {{ (p.name | service_logo | replace('width="14"','width="22"') | replace('height="14"','height="22"')) | safe }}
+        </span>
+      </a>
+      {% endfor %}
+    </div>
+    {% endif %}
+  </div>
+</div>
+</div>
+
+<!-- Tracklist -->
+{% if tracks %}
+<div style="background: rgba(10,10,18,0.75); border: 1px solid rgba(255,255,255,0.07); border-top: none; border-radius: 0; padding: 1.5rem; backdrop-filter: blur(8px); margin-bottom: 2rem;">
+  <h2 class="text-lg font-semibold text-gray-300 mb-3">Tracklist</h2>
+  <div class="rounded-xl overflow-hidden">
+    {% for t in tracks %}
+    {% set is_highlighted = highlight_track and (t.name | lower == highlight_track | lower) %}
+    {% set is_most_played = most_played_track and (t.name | lower == most_played_track | lower) and not is_highlighted %}
+    <div class="flex items-center gap-3 px-4 py-2.5 {% if not loop.last %}border-b border-border{% endif %} hover:bg-cardHover transition-colors"
+         {% if is_highlighted %}style="background:rgba(162,56,255,0.12); border-left:3px solid #a238ff;"{% endif %}>
+      <span class="text-muted text-xs w-5 text-right flex-shrink-0">{{ t.rank }}</span>
+      <span class="text-sm flex-1 {% if is_highlighted %}font-semibold{% endif %}" style="color:{% if is_highlighted %}#c084fc{% else %}white{% endif %};">{{ t.name }}</span>
+      {% if is_highlighted %}<span class="text-xs flex-shrink-0" style="color:#a238ff;">LB pick</span>{% endif %}
+      {% if is_most_played %}<span class="text-xs flex-shrink-0" style="color:#f59e0b;">★ most played</span>{% endif %}
+      <!-- Deezer 30s preview -->
+      {% if t.preview %}
+      <button onclick="playPreview('{{ t.preview }}', '{{ t.name | replace("'", "\\'") }}')"
+              title="30s preview · Deezer"
+              class="flex-shrink-0 p-1.5 rounded-lg hover:opacity-80 transition-opacity"
+              style="border:1px solid rgba(162,56,255,0.35); background:rgba(162,56,255,0.08);">
+        <svg xmlns="http://www.w3.org/2000/svg" xml:space="preserve" viewBox="-0.02 0 277.13 277.12" width="16" height="16"><style>.dz{fill:#a238ff}</style><g transform="translate(-13.9)"><path d="M21.9 115.7c4.4 0 8-14.5 8-32.4s-3.6-32.4-8-32.4-8 14.5-8 32.4 3.6 32.4 8 32.4" class="dz"/><path d="M256.8 18c-4.2 0-7.9 9.3-10.5 24.2C242.1 16.7 235.4 0 227.8 0c-9 0-16.9 23.5-20.6 57.7C203.5 32.9 198 17 191.9 17c-8.6 0-16 31.2-18.7 74.7-5.1-22.3-12.5-36.3-20.7-36.3s-15.6 14-20.7 36.3C129 48.2 121.7 17 113 17c-6.2 0-11.7 15.9-15.3 40.8C94 23.5 86.2 0 77.1 0c-7.6 0-14.4 16.7-18.5 42.3C56 27.4 52.3 18 48.1 18 40.3 18 34 50.5 34 90.5s6.3 72.4 14.1 72.4c3.2 0 6.2-5.5 8.5-14.7 3.7 33.8 11.5 57 20.5 57 7 0 13.2-13.9 17.4-35.9 2.9 41.8 10.1 71.5 18.5 71.5 5.3 0 10.1-11.8 13.7-30.9 4.3 39.5 14.2 67.2 25.8 67.2s21.5-27.7 25.8-67.2c3.6 19.1 8.4 30.9 13.7 30.9 8.4 0 15.6-29.7 18.5-71.5 4.2 22 10.4 35.9 17.4 35.9 9 0 16.8-23.2 20.5-57 2.4 9.2 5.3 14.7 8.5 14.7 7.8 0 14.1-32.4 14.1-72.4-.2-40-6.5-72.5-14.2-72.5" class="dz"/><path d="M283 115.7c4.4 0 8-14.5 8-32.4s-3.6-32.4-8-32.4-8 14.5-8 32.4 3.6 32.4 8 32.4" class="dz"/></g></svg>
+      </button>
+      {% endif %}
+      <!-- YouTube full play -->
+      <button onclick="playYouTube('{{ artist | replace("'", "\\'") }}', '{{ t.name | replace("'", "\\'") }}')"
+              title="Play on YouTube"
+              class="flex-shrink-0 p-1.5 rounded-lg hover:opacity-80 transition-opacity"
+              style="border:1px solid rgba(206,19,18,0.35); background:rgba(206,19,18,0.08);">
+        <svg width="18" height="13" viewBox="0 -7 48 48" xmlns="http://www.w3.org/2000/svg"><g fill="#CE1312" transform="translate(-200,-368)"><path d="M219.044,391.269916 L219.0425,377.687742 L232.0115,384.502244 L219.044,391.269916 Z M247.52,375.334163 C247.52,375.334163 247.0505,372.003199 245.612,370.536366 C243.7865,368.610299 241.7405,368.601235 240.803,368.489448 C234.086,368 224.0105,368 224.0105,368 L223.9895,368 C223.9895,368 213.914,368 207.197,368.489448 C206.258,368.601235 204.2135,368.610299 202.3865,370.536366 C200.948,372.003199 200.48,375.334163 200.48,375.334163 C200.48,375.334163 200,379.246723 200,383.157773 L200,386.82561 C200,390.73817 200.48,394.64922 200.48,394.64922 C200.48,394.64922 200.948,397.980184 202.3865,399.447016 C204.2135,401.373084 206.612,401.312658 207.68,401.513574 C211.52,401.885191 224,402 224,402 C224,402 234.086,401.984894 240.803,401.495446 C241.7405,401.382148 243.7865,401.373084 245.612,399.447016 C247.0505,397.980184 247.52,394.64922 247.52,394.64922 C247.52,394.64922 248,390.73817 248,386.82561 L248,383.157773 C248,379.246723 247.52,375.334163 247.52,375.334163 Z"/></g></svg>
+      </button>
+      <span class="text-muted text-xs flex-shrink-0 w-10 text-right">{{ t.duration }}</span>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+
+<!-- Modal -->
+<div id="modal-container"></div>
+</div>
+
+<!-- Lightbox -->
+<div id="lightbox" onclick="closeLightbox()"
+     style="display:none; position:fixed; inset:0; z-index:1000; background:rgba(0,0,0,0.92); cursor:zoom-out; align-items:center; justify-content:center;">
+  <img id="lightbox-img" src="" alt=""
+       style="max-width:90vmin; max-height:90vmin; border-radius:0.5rem; box-shadow:0 0 60px rgba(0,0,0,0.8);">
+</div>
+
+<!-- Floating player — bottom-right card -->
+<div id="player-bar" style="
+  display:none; position:fixed; bottom:1.25rem; right:1.25rem; z-index:2000;
+  width:min(340px, calc(100vw - 2rem));
+  background:rgba(10,10,18,0.55); border:1px solid rgba(255,255,255,0.08); border-radius:14px;
+  backdrop-filter:blur(24px); -webkit-backdrop-filter:blur(24px);
+  padding:0.75rem; flex-direction:column; gap:0.6rem;
+  box-shadow:0 8px 32px rgba(0,0,0,0.6);">
+  <!-- Track info + stop -->
+  <div style="display:flex; align-items:center; gap:0.75rem;">
+    <div style="flex:1; min-width:0;">
+      <p id="player-title" class="text-white text-xs font-semibold truncate"></p>
+      <p id="player-type" style="color:#6b7280; font-size:0.65rem;"></p>
+    </div>
+    <button onclick="stopAll()" style="color:#6b7280; font-size:1rem; background:none; border:none; cursor:pointer; flex-shrink:0; line-height:1;" title="Stop">■</button>
+  </div>
+  <!-- Deezer audio with native controls -->
+  <audio id="preview-audio" controls preload="none"
+         style="display:none; width:100%; height:32px; accent-color:#a238ff;"></audio>
+  <!-- YouTube IFrame -->
+  <div id="yt-container" style="display:none; width:316px; height:178px; border-radius:8px; overflow:hidden;">
+    <div id="yt-player"></div>
+  </div>
+</div>
+
+<script>
+// ── Lightbox ──────────────────────────────────────────────────────────────────
+function openLightbox(src) {
+  const lb = document.getElementById('lightbox');
+  document.getElementById('lightbox-img').src = src;
+  lb.style.display = 'flex';
+}
+function closeLightbox() {
+  document.getElementById('lightbox').style.display = 'none';
+}
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeLightbox(); });
+
+// ── Player bar ────────────────────────────────────────────────────────────────
+const playerBar = document.getElementById('player-bar');
+const previewAudio = document.getElementById('preview-audio');
+const ytContainer = document.getElementById('yt-container');
+const playerTitle = document.getElementById('player-title');
+const playerType = document.getElementById('player-type');
+
+function showPlayer(title, typeLabel) {
+  playerBar.style.display = 'flex';
+  playerTitle.textContent = title;
+  playerType.textContent = typeLabel;
+}
+
+function stopAll() {
+  previewAudio.pause();
+  previewAudio.src = '';
+  previewAudio.style.display = 'none';
+  ytContainer.style.display = 'none';
+  if (window._ytPlayer && window._ytPlayer.stopVideo) window._ytPlayer.stopVideo();
+  playerBar.style.display = 'none';
+}
+
+// ── Deezer 30s preview ────────────────────────────────────────────────────────
+function playPreview(url, trackName) {
+  stopAll();
+  previewAudio.src = url;
+  previewAudio.style.display = 'block';
+  previewAudio.play();
+  ytContainer.style.display = 'none';
+  showPlayer(trackName, '30-second preview · Deezer');
+}
+
+// ── YouTube full play ─────────────────────────────────────────────────────────
+let _ytReady = false;
+let _ytPending = null;
+
+function onYouTubeIframeAPIReady() {
+  _ytReady = true;
+  window._ytPlayer = new YT.Player('yt-player', {
+    height: '178',
+    width: '316',
+    playerVars: { autoplay: 1, controls: 1, rel: 0, fs: 0 },
+    events: { onReady: () => { if (_ytPending) _loadYT(_ytPending); } }
+  });
+}
+
+function _loadYT(videoId) {
+  _ytPending = null;
+  ytContainer.style.display = 'block';
+  window._ytPlayer.loadVideoById(videoId);
+}
+
+async function playYouTube(artist, track) {
+  stopAll();
+  // On mobile, open YouTube search directly — no scraping needed
+  if (window.innerWidth < 640) {
+    const ytSearch = `https://www.youtube.com/results?search_query=${encodeURIComponent(artist + ' ' + track)}`;
+    window.open(ytSearch, '_blank');
+    return;
+  }
+  showPlayer(track, 'Searching YouTube…');
+  try {
+    const r = await fetch(`/api/youtube/search?artist=${encodeURIComponent(artist)}&track=${encodeURIComponent(track)}`);
+    if (!r.ok) { playerType.textContent = 'Not found on YouTube'; return; }
+    const { video_id } = await r.json();
+    showPlayer(track, 'YouTube · Full play');
+    if (_ytReady && window._ytPlayer && window._ytPlayer.loadVideoById) {
+      _loadYT(video_id);
+    } else {
+      _ytPending = video_id;
+      if (!document.getElementById('yt-api-script')) {
+        const s = document.createElement('script');
+        s.id = 'yt-api-script';
+        s.src = 'https://www.youtube.com/iframe_api';
+        document.head.appendChild(s);
+      }
+    }
+  } catch(e) {
+    playerType.textContent = 'Error loading YouTube';
+  }
+}
+</script>
+{% endblock %}
