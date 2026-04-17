@@ -25,7 +25,6 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Redwave", lifespan=lifespan)
-app.add_middleware(SessionMiddleware, secret_key=settings.secret_key)
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
 
@@ -37,6 +36,10 @@ async def require_auth(request: Request, call_next):
     if not request.session.get("authenticated"):
         return RedirectResponse("/login", status_code=302)
     return await call_next(request)
+
+
+# SessionMiddleware must be added AFTER the http middleware so it runs first (outermost)
+app.add_middleware(SessionMiddleware, secret_key=settings.secret_key)
 
 
 app.include_router(auth.router)
