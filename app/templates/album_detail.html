@@ -247,9 +247,10 @@ let _ytPending = null;
 function onYouTubeIframeAPIReady() {
   _ytReady = true;
   window._ytPlayer = new YT.Player('yt-player', {
+    host: 'https://www.youtube-nocookie.com',
     height: '178',
     width: '316',
-    playerVars: { autoplay: 1, controls: 1, rel: 0, fs: 0 },
+    playerVars: { autoplay: 1, controls: 1, rel: 0, fs: 0, iv_load_policy: 3 },
     events: { onReady: () => { if (_ytPending) _loadYT(_ytPending); } }
   });
 }
