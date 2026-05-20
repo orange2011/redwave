@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
+import json
+
 import httpx
 
 from app.config import settings
@@ -7,6 +10,16 @@ from app.config import settings
 
 class QBittorrentError(RuntimeError):
     """Raised when qBittorrent rejects an API request."""
+
+
+@dataclass
+class QBittorrentAddResult:
+    success: bool
+    hashes: list[str]
+    message: str = ""
+
+    def __bool__(self) -> bool:
+        return self.success
 
 
 def qbt_base_url() -> str:
@@ -70,7 +83,30 @@ class QBittorrentClient:
 
         raise QBittorrentError(qbt_login_error_message(response))
 
-    async def add_torrent(self, torrent_bytes: bytes, tags: list[str] | None = None) -> bool:
+    def parse_add_response(self, response: httpx.Response) -> QBittorrentAddResult:
+        body = _body_preview(response)
+        if response.status_code >= 400:
+            raise QBittorrentError(f"Torrent add failed (HTTP {response.status_code}: {body or 'empty response'}).")
+        if response.text.strip() == "Ok.":
+            return QBittorrentAddResult(success=True, hashes=[])
+
+        try:
+            payload = response.json()
+        except json.JSONDecodeError:
+            payload = None
+
+        if isinstance(payload, dict):
+            hashes = [str(value) for value in payload.get("added_torrent_ids", []) if value]
+            success_count = int(payload.get("success_count") or len(hashes) or 0)
+            failure_count = int(payload.get("failure_count") or 0)
+            if success_count > 0 and failure_count == 0:
+                return QBittorrentAddResult(success=True, hashes=hashes, message=body)
+            if success_count > 0:
+                return QBittorrentAddResult(success=True, hashes=hashes, message=body)
+
+        raise QBittorrentError(f"Torrent add failed (HTTP {response.status_code}: {body or 'empty response'}).")
+
+    async def add_torrent_with_result(self, torrent_bytes: bytes, tags: list[str] | None = None) -> QBittorrentAddResult:
         base_url = qbt_base_url()
         data = {"category": settings.qbt_category}
         clean_tags = [tag.strip() for tag in (tags or []) if tag and tag.strip()]
@@ -78,12 +114,25 @@ class QBittorrentClient:
             data["tags"] = ",".join(clean_tags)
         async with httpx.AsyncClient(timeout=10.0, headers=_qbt_headers(base_url)) as client:
             await self.login(client, base_url)
+            await self.ensure_category(client, base_url)
             response = await client.post(f"{base_url}/api/v2/torrents/add", files={
                 "torrents": ("upload.torrent", torrent_bytes, "application/x-bittorrent"),
             }, data=data)
-        if response.text == "Ok.":
-            return True
-        raise QBittorrentError(f"Torrent add failed (HTTP {response.status_code}: {_body_preview(response) or 'empty response'}).")
+        return self.parse_add_response(response)
+
+    async def add_torrent(self, torrent_bytes: bytes, tags: list[str] | None = None) -> bool:
+        return bool(await self.add_torrent_with_result(torrent_bytes, tags=tags))
+
+    async def ensure_category(self, client: httpx.AsyncClient, base_url: str) -> None:
+        category = (settings.qbt_category or "").strip()
+        if not category:
+            return
+        # qBittorrent is happy to say success on add while not all setups keep the
+        # category as expected. Creating first is cheap and harmless if it exists.
+        try:
+            await client.post(f"{base_url}/api/v2/torrents/createCategory", data={"category": category})
+        except Exception:
+            pass
 
     async def get_torrent_status(self, infohash: str) -> str | None:
         base_url = qbt_base_url()
@@ -95,8 +144,7 @@ class QBittorrentClient:
         if not torrents:
             return None
         state = torrents[0].get("state", "")
-        completed_states = {"uploading", "pausedUP", "stoppedUP", "seeding", "forcedUP"}
-        if state in completed_states:
+        if state in {"uploading", "pausedUP", "stoppedUP", "seeding", "forcedUP", "queuedUP", "stalledUP", "checkingUP"}:
             return "completed"
         return "downloading"
 

@@ -197,9 +197,11 @@ function openArtistLightbox(src) {
   const frame = document.getElementById('artist-lightbox-frame');
   frame.replaceChildren();
   const img = document.createElement('img');
-  img.src = src;
+  const hqSrc = window.redwaveHighQualityImageUrl ? window.redwaveHighQualityImageUrl(src) : src;
+  img.src = hqSrc;
   img.alt = '';
-  img.style.cssText = 'width:min(82vw, 620px); height:auto; max-height:88vh; object-fit:contain; border-radius:0.75rem; box-shadow:0 0 60px rgba(0,0,0,0.8);';
+  img.onerror = () => { if (img.src !== src) img.src = src; };
+  img.style.cssText = 'width:min(90vw, 920px); height:auto; max-height:88vh; object-fit:contain; border-radius:0.75rem; box-shadow:0 0 60px rgba(0,0,0,0.8);';
   frame.appendChild(img);
   lb.style.display = 'flex';
 }

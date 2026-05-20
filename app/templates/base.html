@@ -377,6 +377,36 @@
       }, 3600);
     };
 
+    window.redwaveHighQualityImageUrl = function redwaveHighQualityImageUrl(src) {
+      if (!src) return src;
+      try {
+        const url = new URL(src, window.location.href);
+        let path = url.pathname;
+
+        if (url.hostname.includes('lastfm') || url.hostname.includes('fastly')) {
+          path = path.replace(/\/i\/u\/(?:64s|174s|300x300|770x0|ar0)\//, '/i/u/770x0/');
+        }
+
+        if (url.hostname.includes('dzcdn.net')) {
+          path = path.replace(/\/\d+x\d+-000000-80-0-0\.(jpg|png|webp)$/i, '/1000x1000-000000-80-0-0.$1');
+        }
+
+        if (url.hostname.includes('mzstatic.com') || url.hostname.includes('music.apple.com')) {
+          path = path.replace(/\/\d+x\d+bb\.(jpg|jpeg|png|webp)$/i, '/1200x1200bb.$1');
+          path = path.replace(/\/\d+x\d+(?:cc|sr)\.(jpg|jpeg|png|webp)$/i, '/1200x1200bb.$1');
+        }
+
+        if (url.hostname.includes('coverartarchive.org')) {
+          path = path.replace(/-(?:250|500|1200)\.(jpg|jpeg|png|webp)$/i, '.$1');
+        }
+
+        url.pathname = path;
+        return url.toString();
+      } catch {
+        return src;
+      }
+    };
+
     function settleSkeletonImage(img) {
       const holder = img.closest('.skeleton-surface');
       if (!holder) return;

@@ -394,9 +394,12 @@ async def grab_torrent(
             token_mode=freeleech_token_mode,
         )
         qbt_tag = settings.qbt_red_tag if tracker == "red" else settings.qbt_ops_tag
-        success = await qbt_client.add_torrent(torrent_bytes, tags=[qbt_tag])
-        if success:
+        add_result = await qbt_client.add_torrent_with_result(torrent_bytes, tags=[qbt_tag])
+        if add_result:
             album_request.status = "downloading"
+            if add_result.hashes:
+                album_request.qbt_hash = add_result.hashes[0]
+                raw_json["qbt_hash"] = add_result.hashes[0]
             if tracker == "red" and _truthy(settings.ops_cross_seed):
                 ops_match = await _find_ops_cross_seed_match(
                     artist,
