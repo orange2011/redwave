@@ -25,9 +25,51 @@ def _read_env() -> dict[str, str]:
     return result
 
 
-def _write_env(data: dict[str, str]):
-    lines = [f"{k}={v}" for k, v in data.items()]
-    ENV_PATH.write_text("\n".join(lines) + "\n")
+def _env_key(line: str) -> str | None:
+    stripped = line.strip()
+    if not stripped or stripped.startswith("#") or "=" not in stripped:
+        return None
+    key, _, _ = stripped.partition("=")
+    if key.startswith("export "):
+        key = key[7:]
+    key = key.strip()
+    return key or None
+
+
+def _backup_env():
+    if not ENV_PATH.exists():
+        return
+    backup_path = ENV_PATH.parent / f"{ENV_PATH.name}.bak"
+    backup_path.write_text(ENV_PATH.read_text())
+
+
+def _write_env(data: dict[str, str], remove_keys: set[str] | None = None):
+    """Write .env without destroying comments, blank lines, or unknown local keys."""
+    remove_keys = remove_keys or set()
+    seen: set[str] = set()
+    output: list[str] = []
+    original_lines = ENV_PATH.read_text().splitlines() if ENV_PATH.exists() else []
+
+    _backup_env()
+
+    for line in original_lines:
+        key = _env_key(line)
+        if key is None:
+            output.append(line)
+            continue
+        if key in remove_keys:
+            continue
+        if key in data:
+            output.append(f"{key}={data[key]}")
+            seen.add(key)
+        else:
+            output.append(line)
+
+    for key, value in data.items():
+        if key not in seen and key not in remove_keys:
+            output.append(f"{key}={value}")
+
+    ENV_PATH.write_text("\n".join(output).rstrip() + "\n")
 
 
 def _reload_settings(data: dict[str, str]):
@@ -112,7 +154,8 @@ async def save_settings(request: Request):
         "LISTENBRAINZ_USERNAME",
         "APP_THEME",
     ]
-    for removed in ("LIDARR_URL", "LIDARR_API_KEY"):
+    removed_keys = {"LIDARR_URL", "LIDARR_API_KEY"}
+    for removed in removed_keys:
         env.pop(removed, None)
     for f in fields:
         val = form.get(f, "").strip()
@@ -132,7 +175,7 @@ async def save_settings(request: Request):
             env[f] = val
         elif f in env and not val:
             env[f] = ""
-    _write_env(env)
+    _write_env(env, remove_keys=removed_keys)
     _reload_settings(env)
     # Update scanner music dir (kept for cover art fallback)
     if env.get("MUSIC_DIR"):

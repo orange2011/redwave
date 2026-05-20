@@ -1,5 +1,7 @@
 import asyncio
+import tempfile
 import unittest
+from pathlib import Path
 from unittest.mock import patch
 
 import httpx
@@ -55,6 +57,39 @@ class SettingsTests(unittest.TestCase):
 
         self.assertIn("tests safe configured services", template)
         self.assertIn("Settings saved, but one or more checks failed", template)
+
+    def test_write_env_preserves_local_shape_and_backup(self):
+        old_path = settings_page.ENV_PATH
+        with tempfile.TemporaryDirectory() as tmp:
+            env_path = Path(tmp) / ".env"
+            env_path.write_text(
+                "# Redwave local config\n"
+                "APP_USERNAME=mine\n"
+                "LIDARR_URL=http://old\n"
+                "\n"
+                "RED_API_KEY=old\n"
+                "CUSTOM_LOCAL_KEY=keep-me\n",
+                encoding="utf-8",
+            )
+            settings_page.ENV_PATH = env_path
+            try:
+                settings_page._write_env(
+                    {"RED_API_KEY": "new", "APP_THEME": "black"},
+                    remove_keys={"LIDARR_URL"},
+                )
+            finally:
+                settings_page.ENV_PATH = old_path
+
+            text = env_path.read_text(encoding="utf-8")
+            backup = (env_path.parent / ".env.bak").read_text(encoding="utf-8")
+
+        self.assertIn("# Redwave local config", text)
+        self.assertIn("APP_USERNAME=mine", text)
+        self.assertIn("CUSTOM_LOCAL_KEY=keep-me", text)
+        self.assertIn("RED_API_KEY=new", text)
+        self.assertIn("APP_THEME=black", text)
+        self.assertNotIn("LIDARR_URL", text)
+        self.assertIn("LIDARR_URL=http://old", backup)
 
     def test_tracker_rate_limit_detection(self):
         self.assertTrue(settings_page._looks_like_tracker_rate_limit("Your IP has been temporarily banned."))

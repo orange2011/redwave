@@ -6,6 +6,7 @@ services:
       - "8000:8000"
     volumes:
       - ./redwave.db:/app/redwave.db
+      - ./.env:/app/.env
     env_file:
       - .env
     restart: unless-stopped

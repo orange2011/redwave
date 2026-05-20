@@ -150,6 +150,81 @@
       backdrop-filter: blur(12px);
       -webkit-backdrop-filter: blur(12px);
     }
+    .nav-shell {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 1rem;
+      height: 3.5rem;
+      padding: 0 1rem;
+      width: 100%;
+    }
+    .desktop-nav,
+    .desktop-search {
+      display: none;
+    }
+    .mobile-menu-button {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.5rem;
+      justify-self: end;
+      min-height: 2.35rem;
+      border: 1px solid var(--border);
+      border-radius: 0.65rem;
+      padding: 0.45rem 0.72rem;
+      color: var(--text);
+      background: var(--panel-soft);
+      font-size: 0.86rem;
+      font-weight: 750;
+    }
+    .mobile-menu-button-bars {
+      display: grid;
+      gap: 0.3rem;
+    }
+    .mobile-menu-button-bars span {
+      display: block;
+      width: 1.25rem;
+      height: 0.125rem;
+      border-radius: 999px;
+      background: var(--text);
+    }
+    .mobile-menu {
+      display: none;
+      border-top: 1px solid var(--border);
+      background: var(--nav-bg);
+      padding: 0.85rem 1rem 1rem;
+    }
+    .mobile-menu.is-open {
+      display: block;
+    }
+    .mobile-menu-links {
+      display: grid;
+      gap: 0.8rem;
+      padding-bottom: 0.2rem;
+    }
+    @media (min-width: 640px) {
+      .nav-shell {
+        grid-template-columns: minmax(8rem, 1fr) auto minmax(16rem, 1fr);
+      }
+      .desktop-nav {
+        display: flex;
+        align-items: center;
+        justify-self: center;
+        gap: 1.5rem;
+      }
+      .desktop-search {
+        display: flex;
+        align-items: center;
+        justify-self: end;
+        width: 100%;
+        max-width: 330px;
+      }
+      .mobile-menu-button,
+      .mobile-menu {
+        display: none !important;
+      }
+    }
     .nav-link {
       color: var(--muted);
       font-size: 0.875rem;
@@ -306,13 +381,13 @@
 
   <!-- Navbar -->
   <nav class="app-nav fixed top-0 left-0 right-0 border-b">
-    <div class="w-full px-4 h-14 grid grid-cols-[minmax(0,1fr)_auto] sm:grid-cols-[minmax(8rem,1fr)_auto_minmax(16rem,1fr)] items-center gap-4">
+    <div class="nav-shell">
       <a href="/" class="flex items-center gap-2 min-w-0 justify-self-start">
         <span class="text-accent font-bold text-xl">Redwave</span>
       </a>
 
       <!-- Desktop nav -->
-      <div class="hidden sm:flex items-center gap-6 justify-self-center">
+      <div class="desktop-nav">
         <a href="/" class="nav-link {{ 'active' if current_path == '/' else '' }}">Home</a>
         <a href="/search" class="nav-link {{ 'active' if current_path.startswith('/search') else '' }}">Search</a>
         <a href="/discover" class="nav-link {{ 'active' if discover_active else '' }}">Discover</a>
@@ -321,7 +396,7 @@
       </div>
 
       <!-- Desktop search bar -->
-      <div class="hidden sm:flex items-center justify-self-end w-full" style="max-width:330px;">
+      <div class="desktop-search">
         <input type="text" name="q" placeholder="Search albums..."
           class="bg-white border border-gray-300 rounded-lg px-3 py-1.5 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent w-full"
           autocomplete="off"
@@ -329,27 +404,28 @@
       </div>
 
       <!-- Mobile hamburger -->
-      <button class="sm:hidden inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-border justify-self-end col-start-2 text-sm font-semibold"
-              style="color:var(--text); background:var(--panel-soft);"
-              onclick="document.getElementById('mobile-menu').classList.toggle('hidden')"
+      <button type="button"
+              class="mobile-menu-button"
+              onclick="window.toggleMobileMenu && window.toggleMobileMenu()"
               aria-label="Menu"
-              aria-controls="mobile-menu">
-        <span class="flex flex-col gap-1.5">
-          <span class="block w-5 h-0.5" style="background:var(--text);"></span>
-          <span class="block w-5 h-0.5" style="background:var(--text);"></span>
-          <span class="block w-5 h-0.5" style="background:var(--text);"></span>
+              aria-controls="mobile-menu"
+              aria-expanded="false">
+        <span class="mobile-menu-button-bars" aria-hidden="true">
+          <span></span>
+          <span></span>
+          <span></span>
         </span>
         <span>Menu</span>
       </button>
     </div>
 
     <!-- Mobile menu -->
-    <div id="mobile-menu" class="hidden sm:hidden border-t border-border px-4 py-3 space-y-3" style="background:var(--nav-bg);">
+    <div id="mobile-menu" class="mobile-menu">
       <input type="text" name="q" placeholder="Search albums..."
-        class="w-full bg-white border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:border-accent"
+        class="w-full bg-white border border-gray-300 rounded-lg px-3 py-2 mb-3 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:border-accent"
         autocomplete="off"
-        onkeydown="if(event.key==='Enter'&&this.value.trim()){window.location.href='/search?q='+encodeURIComponent(this.value.trim());document.getElementById('mobile-menu').classList.add('hidden');}">
-      <div class="flex flex-col gap-3 pb-1">
+        onkeydown="if(event.key==='Enter'&&this.value.trim()){window.location.href='/search?q='+encodeURIComponent(this.value.trim());window.closeMobileMenu && window.closeMobileMenu();}">
+      <div class="mobile-menu-links">
         <a href="/" class="nav-link {{ 'active' if current_path == '/' else '' }}">Home</a>
         <a href="/search" class="nav-link {{ 'active' if current_path.startswith('/search') else '' }}">Search</a>
         <a href="/discover" class="nav-link {{ 'active' if discover_active else '' }}">Discover</a>
@@ -369,6 +445,23 @@
   <div id="toast-stack" class="toast-stack" aria-live="polite" aria-atomic="true"></div>
 
   <script>
+    window.closeMobileMenu = function closeMobileMenu() {
+      const menu = document.getElementById('mobile-menu');
+      const button = document.querySelector('.mobile-menu-button');
+      if (!menu || !button) return;
+      menu.classList.remove('is-open');
+      button.setAttribute('aria-expanded', 'false');
+    };
+
+    window.toggleMobileMenu = function toggleMobileMenu() {
+      const menu = document.getElementById('mobile-menu');
+      const button = document.querySelector('.mobile-menu-button');
+      if (!menu || !button) return;
+      const open = !menu.classList.contains('is-open');
+      menu.classList.toggle('is-open', open);
+      button.setAttribute('aria-expanded', open ? 'true' : 'false');
+    };
+
     window.showToast = function showToast(message, tone = 'info') {
       const stack = document.getElementById('toast-stack');
       if (!stack || !message) return;

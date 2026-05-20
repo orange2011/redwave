@@ -1,6 +1,8 @@
 # Environment & secrets
 .env
 *.env
+.env.bak
+.env.*.bak
 
 # Database
 *.db

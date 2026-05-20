@@ -25,10 +25,13 @@ class ThemeConfigTests(unittest.TestCase):
 
     def test_mobile_nav_button_stays_inside_mobile_grid(self):
         base = (ROOT / "app" / "templates" / "base.html").read_text()
-        self.assertIn("grid-cols-[minmax(0,1fr)_auto]", base)
-        self.assertIn("sm:grid-cols-[minmax(8rem,1fr)_auto_minmax(16rem,1fr)]", base)
+        self.assertIn(".nav-shell", base)
+        self.assertIn("grid-template-columns: minmax(0, 1fr) auto", base)
+        self.assertIn("grid-template-columns: minmax(8rem, 1fr) auto minmax(16rem, 1fr)", base)
         self.assertIn('aria-controls="mobile-menu"', base)
-        self.assertIn("col-start-2", base)
+        self.assertIn('aria-expanded="false"', base)
+        self.assertIn("toggleMobileMenu", base)
+        self.assertIn("mobile-menu.is-open", base)
         self.assertIn("<span>Menu</span>", base)
         self.assertIn('id="mobile-menu"', base)
 
