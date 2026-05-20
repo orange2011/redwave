@@ -1,5 +1,6 @@
 import os
 import re
+import json
 from pathlib import Path
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, JSONResponse
@@ -134,8 +135,19 @@ async def save_settings(request: Request):
     if env.get("MUSIC_DIR"):
         from app.services import scanner
         scanner.MUSIC_DIR = Path(env["MUSIC_DIR"])
-    from fastapi.responses import RedirectResponse
-    return RedirectResponse("/settings?saved=1", status_code=303)
+    save_checks = await _run_configured_save_checks(env)
+    save_failed = any(check.get("ok") is False for check in save_checks)
+    from app.services.redacted import media_score_options
+    return templates.TemplateResponse("settings.html", {
+        "request": request,
+        "env": env,
+        "media_scores": media_score_options(),
+        "saved": "1",
+        "save_checks": save_checks,
+        "save_failed": save_failed,
+        "lastfm_connected": request.query_params.get("lastfm_connected"),
+        "lastfm_error": request.query_params.get("lastfm_error"),
+    })
 
 
 # ── Test endpoints ──────────────────────────────────────────────────────────
@@ -256,15 +268,17 @@ async def test_discogs():
 @router.get("/api/settings/test/qbittorrent")
 async def test_qbittorrent():
     import httpx
+    from app.services.qbittorrent import QBittorrentClient, qbt_base_url, _qbt_headers
     try:
-        client = httpx.AsyncClient(base_url=settings.qbt_host, timeout=8)
-        r = await client.post("/api/v2/auth/login", data={
-            "username": settings.qbt_username,
-            "password": settings.qbt_password,
-        })
-        if r.text == "Ok.":
-            return JSONResponse({"ok": True, "msg": f"Connected to {settings.qbt_host}"})
-        return JSONResponse({"ok": False, "msg": f"Login failed: {r.text}"})
+        base_url = qbt_base_url()
+        async with httpx.AsyncClient(timeout=8, headers=_qbt_headers(base_url)) as client:
+            await QBittorrentClient().login(client, base_url)
+            r = await client.get(f"{base_url}/api/v2/app/version")
+            version = r.text.strip()
+        msg = f"Connected to {base_url}"
+        if version:
+            msg += f" ({version})"
+        return JSONResponse({"ok": True, "msg": msg})
     except Exception as e:
         return JSONResponse({"ok": False, "msg": str(e)})
 
@@ -311,11 +325,46 @@ async def test_navidrome():
 
 @router.get("/api/settings/test/musicdir")
 async def test_musicdir():
-    p = Path(getattr(settings, "music_dir", "") or ".")
+    raw_path = (getattr(settings, "music_dir", "") or "").strip()
+    if not raw_path:
+        return JSONResponse({"ok": False, "msg": "No Music Directory configured"})
+    if re.match(r"^/.+:/[^:]+(:ro|:rw)?$", raw_path):
+        _, container_path, *_ = raw_path.split(":")
+        return JSONResponse({
+            "ok": False,
+            "msg": f"This looks like a Docker volume mapping. Put it in docker-compose, then set Music Directory to {container_path}",
+        })
+    p = Path(raw_path)
     if p.exists() and p.is_dir():
         count = sum(1 for _ in p.iterdir() if _.is_dir())
         return JSONResponse({"ok": True, "msg": f"Found — {count} entries"})
     return JSONResponse({"ok": False, "msg": f"Path not found: {p}"})
+
+
+async def _response_json(response: JSONResponse) -> dict:
+    return json.loads(response.body.decode("utf-8"))
+
+
+async def _run_configured_save_checks(env: dict[str, str]) -> list[dict]:
+    checks = [
+        ("RED", ("RED_API_KEY",), test_red),
+        ("OPS", ("OPS_API_KEY",), test_ops),
+        ("Last.fm", ("LASTFM_API_KEY", "LASTFM_USERNAME"), test_lastfm),
+        ("Last.fm account link", ("LASTFM_SHARED_SECRET",), test_lastfm_secret),
+        ("Navidrome", ("NAVIDROME_URL", "NAVIDROME_USER", "NAVIDROME_PASS"), test_navidrome),
+        ("Music folder", ("MUSIC_DIR",), test_musicdir),
+        ("ListenBrainz", ("LISTENBRAINZ_TOKEN",), test_listenbrainz),
+        ("Discogs", ("DISCOGS_TOKEN",), test_discogs),
+        ("qBittorrent", ("QBT_HOST", "QBT_USERNAME", "QBT_PASSWORD"), test_qbittorrent),
+    ]
+    results = []
+    for label, keys, fn in checks:
+        if not any((env.get(key) or "").strip() for key in keys):
+            results.append({"label": label, "ok": None, "msg": "Not configured"})
+            continue
+        data = await _response_json(await fn())
+        results.append({"label": label, "ok": bool(data.get("ok")), "msg": data.get("msg", "")})
+    return results
 
 
 # ── Last.fm OAuth ────────────────────────────────────────────────────────────
