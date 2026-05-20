@@ -306,7 +306,7 @@
 
   <!-- Navbar -->
   <nav class="app-nav fixed top-0 left-0 right-0 border-b">
-    <div class="w-full px-4 h-14 grid grid-cols-[minmax(8rem,1fr)_auto_minmax(16rem,1fr)] items-center gap-4">
+    <div class="w-full px-4 h-14 grid grid-cols-[minmax(0,1fr)_auto] sm:grid-cols-[minmax(8rem,1fr)_auto_minmax(16rem,1fr)] items-center gap-4">
       <a href="/" class="flex items-center gap-2 min-w-0 justify-self-start">
         <span class="text-accent font-bold text-xl">Redwave</span>
       </a>
@@ -329,10 +329,17 @@
       </div>
 
       <!-- Mobile hamburger -->
-      <button class="sm:hidden flex flex-col gap-1.5 p-2 justify-self-end col-start-3" onclick="document.getElementById('mobile-menu').classList.toggle('hidden')" aria-label="Menu">
-        <span class="block w-5 h-0.5 bg-gray-300"></span>
-        <span class="block w-5 h-0.5 bg-gray-300"></span>
-        <span class="block w-5 h-0.5 bg-gray-300"></span>
+      <button class="sm:hidden inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-border justify-self-end col-start-2 text-sm font-semibold"
+              style="color:var(--text); background:var(--panel-soft);"
+              onclick="document.getElementById('mobile-menu').classList.toggle('hidden')"
+              aria-label="Menu"
+              aria-controls="mobile-menu">
+        <span class="flex flex-col gap-1.5">
+          <span class="block w-5 h-0.5" style="background:var(--text);"></span>
+          <span class="block w-5 h-0.5" style="background:var(--text);"></span>
+          <span class="block w-5 h-0.5" style="background:var(--text);"></span>
+        </span>
+        <span>Menu</span>
       </button>
     </div>
 
