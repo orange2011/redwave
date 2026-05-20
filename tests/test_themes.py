@@ -23,6 +23,15 @@ class ThemeConfigTests(unittest.TestCase):
         self.assertIn("current_path.startswith('/album')", base)
         self.assertIn("'active' if collection_active else ''", base)
 
+    def test_mobile_nav_button_stays_inside_mobile_grid(self):
+        base = (ROOT / "app" / "templates" / "base.html").read_text()
+        self.assertIn("grid-cols-[minmax(0,1fr)_auto]", base)
+        self.assertIn("sm:grid-cols-[minmax(8rem,1fr)_auto_minmax(16rem,1fr)]", base)
+        self.assertIn('aria-controls="mobile-menu"', base)
+        self.assertIn("col-start-2", base)
+        self.assertIn("<span>Menu</span>", base)
+        self.assertIn('id="mobile-menu"', base)
+
     def test_login_uses_theme_system(self):
         login = (ROOT / "app" / "templates" / "login.html").read_text()
         self.assertIn('theme-{{ app_theme }}', login)
