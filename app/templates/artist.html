@@ -1,5 +1,35 @@
 {% extends "base.html" %}
 {% block title %}{{ artist }} — Redwave{% endblock %}
+{% block head %}
+<style>
+  .artist-detail-panel {
+    background: var(--panel);
+    border: 1px solid var(--border-soft);
+    border-radius: 10px;
+    padding: 1.35rem;
+    margin-bottom: 0.9rem;
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    box-shadow: 0 18px 55px rgba(0,0,0,0.28);
+  }
+  .artist-detail-panel.compact {
+    padding: 1rem 1.35rem;
+  }
+  .artist-disc-card {
+    border: 1px solid var(--border-soft);
+    background: var(--panel-strong);
+  }
+  .artist-disc-card:hover {
+    border-color: var(--border);
+    background: var(--panel-hover);
+  }
+  @media (max-width: 640px) {
+    .artist-detail-panel {
+      padding: 1rem;
+    }
+  }
+</style>
+{% endblock %}
 
 {% block content %}
 
@@ -8,7 +38,7 @@
   position: fixed; inset: 0; z-index: 0;
   background-image: url('{{ info.image }}');
   background-size: cover; background-position: center;
-  filter: blur(80px) brightness(0.2) saturate(1.4);
+  filter: var(--art-backdrop-filter);
   transform: scale(1.1); pointer-events: none;
 "></div>
 {% endif %}
@@ -16,12 +46,17 @@
 <div style="position: relative; z-index: 1;">
 
   <!-- Hero -->
-  <div style="background:rgba(10,10,18,0.75); border:1px solid rgba(255,255,255,0.07); padding:1.5rem; margin-bottom:0;">
+  <div class="artist-detail-panel">
     <div class="flex flex-col sm:flex-row gap-5 items-center sm:items-end">
       {% if info.image %}
-      <img src="{{ info.image }}" alt="{{ artist }}"
-           class="w-28 h-28 sm:w-40 sm:h-40 flex-shrink-0"
-           style="object-fit:cover; border-radius:50%; box-shadow:0 8px 32px rgba(0,0,0,0.6);">
+      <div class="w-28 h-28 sm:w-40 sm:h-40 flex-shrink-0 rounded-full skeleton-surface flex items-center justify-center text-5xl text-gray-600"
+           style="box-shadow:0 8px 32px rgba(0,0,0,0.6);">
+        <img src="{{ info.image }}" alt="{{ artist }}"
+             onclick="openArtistLightbox(this.src)"
+             class="w-full h-full"
+             style="object-fit:cover; border-radius:50%; cursor:zoom-in;"
+             onerror="this.parentElement.classList.add('has-error'); this.parentElement.innerHTML='♪'">
+      </div>
       {% else %}
       <div class="w-28 h-28 sm:w-40 sm:h-40 flex-shrink-0 rounded-full bg-card flex items-center justify-center text-5xl">♪</div>
       {% endif %}
@@ -66,7 +101,7 @@
 
   <!-- Bio -->
   {% if info.bio %}
-  <div style="background:rgba(10,10,18,0.75); border:1px solid rgba(255,255,255,0.07); border-top:none; padding:1.5rem; margin-bottom:0;">
+  <div class="artist-detail-panel">
     <h2 class="text-sm font-semibold text-gray-400 uppercase tracking-wide mb-2">About {{ artist }}</h2>
     <p class="text-gray-300 text-sm leading-relaxed">{{ info.bio }}</p>
   </div>
@@ -74,30 +109,30 @@
 
   <!-- Similar artists -->
   {% if info.similar %}
-  <div style="background:rgba(10,10,18,0.75); border:1px solid rgba(255,255,255,0.07); border-top:none; padding:1rem 1.5rem; margin-bottom:0;">
+  <div class="artist-detail-panel compact">
     <span class="text-xs text-muted uppercase tracking-wide" style="margin-right:0.75rem;">Similar artists</span>
     {% for s in info.similar %}
     <a href="/artist/{{ s.name | urlencode }}"
-       class="text-xs text-gray-300 hover:text-white transition-colors">{{ s.name }}</a>{% if not loop.last %}<span style="color:#6b7280; margin:0 0.5rem;">·</span>{% endif %}
+       class="text-xs text-gray-300 hover:text-white transition-colors">{{ s.name }}</a>{% if not loop.last %}<span style="color:var(--subtle); margin:0 0.5rem;">·</span>{% endif %}
     {% endfor %}
   </div>
   {% endif %}
 
   <!-- Discography -->
   {% if discography %}
-  <div style="background:rgba(10,10,18,0.75); border:1px solid rgba(255,255,255,0.07); border-top:none; padding:1.5rem; margin-bottom:2rem;">
+  <div class="artist-detail-panel" style="margin-bottom:2rem;">
     <h2 class="text-lg font-semibold text-gray-300 mb-4">Discography</h2>
 
     <!-- Tabs -->
     <div class="flex flex-wrap gap-2 mb-6">
       <button onclick="filterDisc('all')" id="tab-all"
         class="disc-tab px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors"
-        style="background:#7c3aed; color:#fff;">All</button>
+        style="background:var(--purple); color:#fff;">All</button>
       {% for label in discography.keys() %}
       <button onclick="filterDisc('{{ loop.index }}')" id="tab-{{ loop.index }}"
         class="disc-tab px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors"
-        style="background:rgba(255,255,255,0.06); color:#9ca3af;">
-        {{ label }} <span style="color:#6b7280;">({{ discography[label] | length }})</span>
+        style="background:var(--panel-soft); color:var(--muted);">
+        {{ label }} <span style="color:var(--subtle);">({{ discography[label] | length }})</span>
       </button>
       {% endfor %}
     </div>
@@ -107,19 +142,22 @@
       <h3 class="text-xs font-semibold text-gray-500 uppercase tracking-widest mb-3">{{ label }}</h3>
       <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
         {% for r in releases %}
-        <a href="/album/{{ r.mb_id if r.mb_id else '_' }}?artist={{ artist | urlencode }}&album={{ r.album | urlencode }}&cover={{ (r.nav_cover or r.cover_url or '') | urlencode }}"
-           class="bg-cardHover rounded-xl overflow-hidden hover:scale-105 transition-all duration-200 cursor-pointer block relative">
+        <a href="/album/{{ r.mb_id if r.mb_id else '_' }}?artist={{ artist | urlencode }}&album={{ r.album | urlencode }}&cover={{ (r.nav_cover or r.cover_url or '') | urlencode }}{% if r.year %}&year={{ r.year | urlencode }}{% endif %}"
+           class="artist-disc-card rounded-xl overflow-hidden hover:scale-105 transition-all duration-200 cursor-pointer block relative">
           {% if r.in_collection %}
           <img src="/static/check.svg" alt="In Collection"
                style="position:absolute; top:5px; right:5px; width:20px; height:20px; filter:drop-shadow(0 1px 3px rgba(0,0,0,0.7)); z-index:1;">
           {% endif %}
           {% set cover = r.nav_cover if r.in_collection and r.nav_cover else r.cover_url %}
+          <div class="{% if cover %}skeleton-surface{% else %}has-error{% endif %} w-full aspect-square bg-border flex items-center justify-center text-4xl text-gray-600">
           {% if cover %}
-          <img src="{{ cover }}" alt="{{ r.album }}" class="w-full aspect-square object-cover"
-               onerror="this.outerHTML='<div class=\'w-full aspect-square bg-border flex items-center justify-center text-4xl text-gray-600\'>♪</div>'">
+          <img src="{{ cover }}" alt="{{ r.album }}" class="w-full h-full object-cover"
+               loading="lazy"
+               onerror="this.parentElement.classList.add('has-error'); this.outerHTML='♪'">
           {% else %}
-          <div class="w-full aspect-square bg-border flex items-center justify-center text-4xl text-gray-600">♪</div>
+          ♪
           {% endif %}
+          </div>
           <div class="p-2">
             <p class="text-white text-xs font-semibold truncate">{{ r.album }}</p>
             {% if r.year %}<p class="text-muted text-xs">{{ r.year }}</p>{% endif %}
@@ -138,12 +176,37 @@
     });
     document.querySelectorAll('.disc-tab').forEach(b => {
       const active = b.id === 'tab-' + key;
-      b.style.background = active ? '#7c3aed' : 'rgba(255,255,255,0.06)';
-      b.style.color = active ? '#fff' : '#9ca3af';
+      b.style.background = active ? 'var(--purple)' : 'var(--panel-soft)';
+      b.style.color = active ? '#fff' : 'var(--muted)';
     });
   }
   </script>
   {% endif %}
 
 </div>
+
+<!-- Lightbox -->
+<div id="artist-lightbox" onclick="closeArtistLightbox()"
+     style="display:none; position:fixed; inset:0; z-index:1000; background:rgba(0,0,0,0.92); cursor:zoom-out; align-items:center; justify-content:center;">
+  <div id="artist-lightbox-frame"></div>
+</div>
+
+<script>
+function openArtistLightbox(src) {
+  const lb = document.getElementById('artist-lightbox');
+  const frame = document.getElementById('artist-lightbox-frame');
+  frame.replaceChildren();
+  const img = document.createElement('img');
+  img.src = src;
+  img.alt = '';
+  img.style.cssText = 'width:min(82vw, 620px); height:auto; max-height:88vh; object-fit:contain; border-radius:0.75rem; box-shadow:0 0 60px rgba(0,0,0,0.8);';
+  frame.appendChild(img);
+  lb.style.display = 'flex';
+}
+function closeArtistLightbox() {
+  document.getElementById('artist-lightbox').style.display = 'none';
+  document.getElementById('artist-lightbox-frame').replaceChildren();
+}
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeArtistLightbox(); });
+</script>
 {% endblock %}

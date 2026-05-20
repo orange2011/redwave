@@ -1,0 +1,193 @@
+{% extends "base.html" %}
+{% block title %}Search Diagnostics - Redwave{% endblock %}
+
+{% block head %}
+<style>
+  .diag-shell {
+    max-width: 1120px;
+    margin: 0 auto;
+  }
+  .diag-panel {
+    border: 1px solid var(--border-soft);
+    border-radius: 10px;
+    background: var(--panel-soft);
+    padding: 1rem;
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+  }
+  .diag-form {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 0.7rem;
+    align-items: center;
+    margin: 1rem 0;
+  }
+  .diag-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.9rem;
+    margin-top: 0.9rem;
+  }
+  .diag-card {
+    border: 1px solid var(--border-soft);
+    border-radius: 8px;
+    background: var(--panel-strong);
+    overflow: hidden;
+  }
+  .diag-card h2 {
+    color: var(--text);
+    font-size: 0.95rem;
+    font-weight: 850;
+    padding: 0.8rem 0.85rem;
+    border-bottom: 1px solid var(--border-soft);
+  }
+  .diag-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 0.75rem;
+    padding: 0.72rem 0.85rem;
+    border-top: 1px solid var(--border-soft);
+  }
+  .diag-row:first-of-type {
+    border-top: 0;
+  }
+  .diag-title {
+    color: var(--text);
+    font-size: 0.84rem;
+    font-weight: 750;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .diag-meta {
+    color: var(--muted);
+    font-size: 0.72rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    margin-top: 0.12rem;
+  }
+  .diag-score {
+    color: var(--text);
+    font-size: 0.8rem;
+    font-weight: 850;
+    border: 1px solid var(--border-soft);
+    background: var(--panel-soft);
+    border-radius: 999px;
+    padding: 0.28rem 0.55rem;
+    height: fit-content;
+  }
+  .diag-chipline {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.42rem;
+    margin-top: 0.7rem;
+  }
+  .diag-chipline span {
+    color: var(--text-soft);
+    font-size: 0.72rem;
+    font-weight: 750;
+    border: 1px solid var(--border-soft);
+    background: var(--panel-strong);
+    border-radius: 999px;
+    padding: 0.34rem 0.55rem;
+  }
+  @media (max-width: 880px) {
+    .diag-grid {
+      grid-template-columns: 1fr;
+    }
+    .diag-form {
+      grid-template-columns: 1fr;
+    }
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="diag-shell">
+  <h1 class="text-2xl font-bold text-white mb-2">Search Diagnostics</h1>
+  <p class="text-muted text-sm">Use this when a search result feels wrong. It shows the normalized query, top winner, and the internal scores for each result type.</p>
+
+  <form method="get" action="/search/diagnostics" class="diag-form">
+    <input type="text" name="q" value="{{ query }}" placeholder="Artist, album, track, or URL"
+      class="w-full bg-white border border-gray-300 text-gray-900 placeholder-gray-400 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent">
+    <button type="submit" class="px-4 py-2.5 rounded-lg text-sm font-semibold text-white" style="background:var(--purple);">Inspect</button>
+  </form>
+
+  {% if diagnostics %}
+  <section class="diag-panel">
+    <div class="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
+      <div>
+        <h2 class="text-lg font-bold text-white">Query shape</h2>
+        <div class="diag-chipline">
+          <span>normalized: {{ diagnostics.normalized }}</span>
+          <span>compact: {{ diagnostics.compact }}</span>
+          {% if search_term and search_term != query %}<span>resolved: {{ search_term }}</span>{% endif %}
+        </div>
+      </div>
+      {% if diagnostics.top %}
+      <div class="diag-card" style="min-width:min(100%, 22rem);">
+        <h2>Current Top Result</h2>
+        <div class="diag-row">
+          <div style="min-width:0;">
+            <div class="diag-title">{{ diagnostics.top.title }}</div>
+            <div class="diag-meta">{{ diagnostics.top.type }}{% if diagnostics.top.subtitle %} - {{ diagnostics.top.subtitle }}{% endif %}</div>
+          </div>
+          <span class="diag-score">{{ diagnostics.top.score }}</span>
+        </div>
+      </div>
+      {% endif %}
+    </div>
+
+    <div class="diag-grid">
+      <section class="diag-card">
+        <h2>Songs</h2>
+        {% for row in diagnostics.songs %}
+        <div class="diag-row">
+          <div style="min-width:0;">
+            <div class="diag-title">{{ row.title }}</div>
+            <div class="diag-meta">{{ row.subtitle }}{% if row.source %} - {{ row.source }}{% endif %}</div>
+          </div>
+          <span class="diag-score">{{ row.score }}</span>
+        </div>
+        {% else %}
+        <div class="diag-row"><div class="diag-meta">No song rows.</div></div>
+        {% endfor %}
+      </section>
+
+      <section class="diag-card">
+        <h2>Albums</h2>
+        {% for row in diagnostics.albums %}
+        <div class="diag-row">
+          <div style="min-width:0;">
+            <div class="diag-title">{{ row.title }}</div>
+            <div class="diag-meta">{{ row.subtitle }}{% if row.in_collection %} - in library{% endif %}{% if row.source %} - {{ row.source }}{% endif %}</div>
+          </div>
+          <span class="diag-score">{{ row.score }}</span>
+        </div>
+        {% else %}
+        <div class="diag-row"><div class="diag-meta">No album rows.</div></div>
+        {% endfor %}
+      </section>
+
+      <section class="diag-card">
+        <h2>Artists</h2>
+        {% for row in diagnostics.artists %}
+        <div class="diag-row">
+          <div style="min-width:0;">
+            <div class="diag-title">{{ row.title }}</div>
+            <div class="diag-meta">{{ row.source or "artist result" }}</div>
+          </div>
+          <span class="diag-score">{{ row.score }}</span>
+        </div>
+        {% else %}
+        <div class="diag-row"><div class="diag-meta">No artist rows.</div></div>
+        {% endfor %}
+      </section>
+    </div>
+  </section>
+  {% else %}
+  <p class="text-muted text-center py-16">Run a query to inspect ranking.</p>
+  {% endif %}
+</div>
+{% endblock %}

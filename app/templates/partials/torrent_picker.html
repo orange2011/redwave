@@ -1,62 +1,145 @@
 <!-- Modal overlay -->
+<style>
+  .torrent-sort-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: inherit;
+    gap: .25rem;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    text-transform: inherit;
+    letter-spacing: inherit;
+    cursor: pointer;
+  }
+  .torrent-sort-button:hover,
+  .torrent-sort-button[aria-sort="ascending"],
+  .torrent-sort-button[aria-sort="descending"] {
+    color: var(--text);
+  }
+  .torrent-sort-arrow {
+    min-width: .65rem;
+    color: var(--accent);
+    font-size: .65rem;
+    line-height: 1;
+    opacity: .35;
+  }
+</style>
 <div class="fixed inset-0 bg-black bg-opacity-80 z-50 flex items-center justify-center p-4"
      onclick="if(event.target===this)this.remove()">
-  <div style="background:#1a1a2e; border:1px solid rgba(255,255,255,0.1); border-radius:0.5rem; width:100%; max-width:900px; max-height:85vh; display:flex; flex-direction:column;"
+  <div data-torrent-picker
+       style="background:var(--panel-strong); border:1px solid var(--border-soft); border-radius:0.5rem; width:100%; max-width:900px; max-height:85vh; display:flex; flex-direction:column;"
        onclick="event.stopPropagation()">
 
     <!-- Header -->
-    <div style="display:flex; align-items:center; justify-content:space-between; padding:1rem 1.25rem; border-bottom:1px solid rgba(255,255,255,0.08);">
-      <h2 style="color:#fff; font-weight:600; font-size:1rem; margin:0;">
+    <div style="display:flex; align-items:center; justify-content:space-between; padding:1rem 1.25rem; border-bottom:1px solid var(--border-soft);">
+      <h2 style="color:var(--text); font-weight:600; font-size:1rem; margin:0;">
         Interactive Search — {{ artist }} - {{ album }}{% if year %} ({{ year }}){% endif %}
       </h2>
       <button onclick="document.getElementById('modal-container').innerHTML=''"
-              style="color:#6b7280; background:none; border:none; font-size:1.2rem; cursor:pointer; line-height:1;">✕</button>
+              style="color:var(--subtle); background:none; border:none; font-size:1.2rem; cursor:pointer; line-height:1;">✕</button>
     </div>
 
     <!-- Table -->
     <div style="overflow-y:auto; flex:1;">
       {% if error %}
       <div style="padding:3rem; text-align:center; color:#f87171;">
-        <p style="font-weight:600;">RED API Error</p>
-        <p style="font-size:.8rem; margin-top:.5rem; color:#9ca3af;">{{ error }}</p>
+        <p style="font-weight:600;">Tracker API Error</p>
+        <p style="font-size:.8rem; margin-top:.5rem; color:var(--muted);">{{ error }}</p>
       </div>
       {% elif torrents %}
+      <div style="padding:.7rem 1rem; color:var(--muted); font-size:.75rem; border-bottom:1px solid var(--border-soft); display:flex; gap:1rem; flex-wrap:wrap;">
+        {% if source_note %}<span>{{ source_note }}</span>{% endif %}
+        <span>Preferred quality: <span style="color:var(--text); font-weight:600;">{{ quality_profile_label or "Any quality" }}</span></span>
+        <span title="{{ media_score_summary or '' }}">Media scores: <span style="color:var(--text); font-weight:600;">custom ranking</span></span>
+        <span>Freeleech tokens: <span style="color:var(--text); font-weight:600;">{{ freeleech_token_label }}</span></span>
+      </div>
       <table style="width:100%; border-collapse:collapse; font-size:0.8rem;">
         <thead>
-          <tr style="color:#6b7280; text-transform:uppercase; font-size:0.7rem; letter-spacing:.05em; border-bottom:1px solid rgba(255,255,255,0.08);">
-            <th style="padding:.6rem 1rem; text-align:left; font-weight:500;">Source</th>
-            <th style="padding:.6rem .75rem; text-align:left; font-weight:500;">Age</th>
-            <th style="padding:.6rem .75rem; text-align:left; font-weight:500; width:99%;">Title</th>
-            <th style="padding:.6rem .75rem; text-align:right; font-weight:500; white-space:nowrap;">Size</th>
-            <th style="padding:.6rem .75rem; text-align:center; font-weight:500;">Peers</th>
-            <th style="padding:.6rem .75rem; text-align:left; font-weight:500;">Quality</th>
+          <tr style="color:var(--subtle); text-transform:uppercase; font-size:0.7rem; letter-spacing:.05em; border-bottom:1px solid var(--border-soft);">
+            <th style="padding:.6rem 1rem; text-align:left; font-weight:500;">
+              <button type="button" class="torrent-sort-button" aria-sort="none" title="Sort by source"
+                      onclick="redwaveSortTorrentPicker(this, 'source')">
+                Source <span class="torrent-sort-arrow" aria-hidden="true"></span>
+              </button>
+            </th>
+            <th style="padding:.6rem .75rem; text-align:left; font-weight:500;">
+              <button type="button" class="torrent-sort-button" aria-sort="none" title="Sort by age"
+                      onclick="redwaveSortTorrentPicker(this, 'age')">
+                Age <span class="torrent-sort-arrow" aria-hidden="true"></span>
+              </button>
+            </th>
+            <th style="padding:.6rem .75rem; text-align:left; font-weight:500; width:99%;">
+              <button type="button" class="torrent-sort-button" aria-sort="none" title="Sort by title"
+                      onclick="redwaveSortTorrentPicker(this, 'title')">
+                Title <span class="torrent-sort-arrow" aria-hidden="true"></span>
+              </button>
+            </th>
+            <th style="padding:.6rem .75rem; text-align:right; font-weight:500; white-space:nowrap;">
+              <button type="button" class="torrent-sort-button" aria-sort="none" title="Sort by size"
+                      style="justify-content:flex-end;"
+                      onclick="redwaveSortTorrentPicker(this, 'size')">
+                Size <span class="torrent-sort-arrow" aria-hidden="true"></span>
+              </button>
+            </th>
+            <th style="padding:.6rem .75rem; text-align:center; font-weight:500;">
+              <button type="button" class="torrent-sort-button" aria-sort="none" title="Sort by seeders"
+                      onclick="redwaveSortTorrentPicker(this, 'peers')">
+                Peers <span class="torrent-sort-arrow" aria-hidden="true"></span>
+              </button>
+            </th>
+            <th style="padding:.6rem .75rem; text-align:left; font-weight:500;">
+              <button type="button" class="torrent-sort-button" aria-sort="none" title="Sort by preferred quality"
+                      onclick="redwaveSortTorrentPicker(this, 'quality')">
+                Quality <span class="torrent-sort-arrow" aria-hidden="true"></span>
+              </button>
+            </th>
+            <th style="padding:.6rem .75rem; text-align:left; font-weight:500;">
+              <button type="button" class="torrent-sort-button" aria-sort="none" title="Sort by token status"
+                      onclick="redwaveSortTorrentPicker(this, 'token')">
+                Token <span class="torrent-sort-arrow" aria-hidden="true"></span>
+              </button>
+            </th>
             <th style="padding:.6rem 1rem;"></th>
           </tr>
         </thead>
-        <tbody>
+        <tbody data-torrent-rows>
           {% for t in torrents %}
-          <tr style="border-bottom:1px solid rgba(255,255,255,0.05); transition:background .15s;"
-              onmouseover="this.style.background='rgba(255,255,255,0.04)'"
+          <tr data-torrent-row
+              data-original-order="{{ loop.index0 }}"
+              data-tracker-label="{{ t.tracker_label }}"
+              data-age-days="{{ t.age_days }}"
+              data-sort-title="{{ t.title | lower }}"
+              data-size-bytes="{{ t.size_bytes }}"
+              data-seeders="{{ t.seeders }}"
+              data-leechers="{{ t.leechers }}"
+              data-quality-score="{{ t.preference_score }}"
+              data-media-score="{{ t.media_score }}"
+              data-token-score="{% if t.freeleech %}3{% elif t.will_use_token %}2{% elif t.can_use_token %}1{% else %}0{% endif %}"
+              style="border-bottom:1px solid var(--border-soft); transition:background .15s;"
+              onmouseover="this.style.background='var(--panel-hover)'"
               onmouseout="this.style.background=''">
             <!-- Source -->
             <td style="padding:.65rem 1rem;">
-              <span style="background:#1db954; color:#fff; font-size:.65rem; font-weight:700; padding:.2rem .5rem; border-radius:.25rem; letter-spacing:.03em;">RED</span>
+              <span style="background:{{ '#c0392b' if t.tracker == 'red' else '#2563eb' }}; color:#fff; font-size:.65rem; font-weight:700; padding:.2rem .5rem; border-radius:.25rem; letter-spacing:.03em;">{{ t.tracker_label }}</span>
             </td>
             <!-- Age -->
-            <td style="padding:.65rem .75rem; color:#6b7280; white-space:nowrap;">{{ t.age_days }}d</td>
+            <td style="padding:.65rem .75rem; color:var(--subtle); white-space:nowrap;">{{ t.age_days }}d</td>
             <!-- Title -->
             <td style="padding:.65rem .75rem;">
-              <a href="https://redacted.sh/torrents.php?id={{ t.red_group_id }}" target="_blank"
-                 style="color:#e5e7eb; text-decoration:none;"
+              <a href="{{ t.tracker_url }}" target="_blank"
+                 style="color:var(--text); text-decoration:none;"
                  onmouseover="this.style.color='#a78bfa'"
-                 onmouseout="this.style.color='#e5e7eb'">{{ t.title }}</a>
+                 onmouseout="this.style.color='var(--text)'">{{ t.title }}</a>
             </td>
             <!-- Size -->
-            <td style="padding:.65rem .75rem; color:#9ca3af; text-align:right; white-space:nowrap;">{{ t.size_human }}</td>
+            <td style="padding:.65rem .75rem; color:var(--muted); text-align:right; white-space:nowrap;">{{ t.size_human }}</td>
             <!-- Peers -->
             <td style="padding:.65rem .75rem; text-align:center; white-space:nowrap;">
               <span style="color:#4ade80;">{{ t.seeders }}</span>
-              <span style="color:#6b7280;">/</span>
+              <span style="color:var(--subtle);">/</span>
               <span style="color:#f87171;">{{ t.leechers }}</span>
             </td>
             <!-- Quality badges -->
@@ -73,6 +156,17 @@
               <span style="background:rgba(167,139,250,.15); color:#a78bfa; border:1px solid rgba(167,139,250,.3); font-size:.65rem; padding:.15rem .4rem; border-radius:.2rem;">Log {{ t.log_score }}%</span>
               {% endif %}
             </td>
+            <td style="padding:.65rem .75rem; white-space:nowrap;">
+              {% if t.freeleech %}
+              <span style="background:rgba(250,204,21,.15); color:#facc15; border:1px solid rgba(250,204,21,.3); font-size:.65rem; padding:.15rem .4rem; border-radius:.2rem;">Already FL</span>
+              {% elif t.will_use_token %}
+              <span style="background:rgba(34,197,94,.15); color:#4ade80; border:1px solid rgba(34,197,94,.3); font-size:.65rem; padding:.15rem .4rem; border-radius:.2rem;">Use token</span>
+              {% elif t.can_use_token %}
+              <span style="color:var(--subtle); font-size:.7rem;">Available</span>
+              {% else %}
+              <span style="color:var(--subtle); font-size:.7rem;">No</span>
+              {% endif %}
+            </td>
             <!-- Grab button -->
             <td style="padding:.65rem 1rem;">
               <form hx-post="/api/torrents/grab" hx-target="#modal-container" style="margin:0;">
@@ -81,12 +175,15 @@
                 <input type="hidden" name="album"          value="{{ album }}">
                 <input type="hidden" name="year"           value="{{ year }}">
                 <input type="hidden" name="cover_url"      value="{{ cover_url }}">
+                <input type="hidden" name="tracker"        value="{{ t.tracker }}">
                 <input type="hidden" name="red_torrent_id" value="{{ t.red_torrent_id }}">
                 <input type="hidden" name="red_group_id"   value="{{ t.red_group_id }}">
                 <input type="hidden" name="format"         value="{{ t.format }}">
                 <input type="hidden" name="encoding"       value="{{ t.encoding }}">
                 <input type="hidden" name="size_bytes"     value="{{ t.size_bytes }}">
                 <input type="hidden" name="seeders"        value="{{ t.seeders }}">
+                <input type="hidden" name="use_freeleech_token" value="{{ 1 if t.will_use_token else 0 }}">
+                <input type="hidden" name="freeleech_token_mode" value="{{ t.token_mode }}">
                 <button type="submit"
                         style="background:#16a34a; color:#fff; border:none; border-radius:.3rem; padding:.35rem .85rem; font-size:.75rem; font-weight:600; cursor:pointer; white-space:nowrap; transition:background .15s;"
                         onmouseover="this.style.background='#15803d'"
@@ -100,20 +197,99 @@
         </tbody>
       </table>
       {% else %}
-      <div style="padding:3rem; text-align:center; color:#6b7280;">
-        <p>No results found on RED for this album.</p>
-        <p style="font-size:.8rem; margin-top:.5rem; color:#4b5563;">Try searching manually on RED.</p>
+      <div style="padding:3rem; text-align:center; color:var(--subtle);">
+        <p>No results found on RED or OPS for this album.</p>
+        <p style="font-size:.8rem; margin-top:.5rem; color:var(--subtle);">Try searching manually on your trackers.</p>
       </div>
       {% endif %}
     </div>
 
     <!-- Footer -->
-    <div style="padding:.75rem 1.25rem; border-top:1px solid rgba(255,255,255,0.08); display:flex; justify-content:flex-end;">
+    <div style="padding:.75rem 1.25rem; border-top:1px solid var(--border-soft); display:flex; justify-content:flex-end;">
       <button onclick="document.getElementById('modal-container').innerHTML=''"
-              style="background:rgba(255,255,255,0.08); color:#9ca3af; border:1px solid rgba(255,255,255,0.12); border-radius:.3rem; padding:.4rem 1rem; font-size:.8rem; cursor:pointer;">
+              style="background:var(--panel-soft); color:var(--muted); border:1px solid var(--border-soft); border-radius:.3rem; padding:.4rem 1rem; font-size:.8rem; cursor:pointer;">
         Close
       </button>
     </div>
 
   </div>
 </div>
+
+<script>
+  window.redwaveSortTorrentPicker = function(button, key) {
+    const picker = button.closest('[data-torrent-picker]');
+    if (!picker) return;
+    const tbody = picker.querySelector('[data-torrent-rows]');
+    if (!tbody) return;
+
+    const defaultDirections = {
+      source: 'asc',
+      age: 'asc',
+      title: 'asc',
+      size: 'desc',
+      peers: 'desc',
+      quality: 'desc',
+      token: 'desc'
+    };
+    const currentKey = tbody.dataset.sortKey || '';
+    const currentDirection = tbody.dataset.sortDirection || '';
+    const defaultDirection = defaultDirections[key] || 'asc';
+    const direction = currentKey === key
+      ? (currentDirection === 'desc' ? 'asc' : 'desc')
+      : defaultDirection;
+    tbody.dataset.sortKey = key;
+    tbody.dataset.sortDirection = direction;
+
+    const rows = Array.from(tbody.querySelectorAll('[data-torrent-row]'));
+    const numberValue = (row, name) => Number(row.dataset[name] || 0);
+    const textValue = (row, name) => (row.dataset[name] || '').toLocaleLowerCase();
+
+    rows.sort((a, b) => {
+      let diff = 0;
+      if (key === 'source') {
+        diff = textValue(a, 'trackerLabel').localeCompare(textValue(b, 'trackerLabel'));
+      } else if (key === 'age') {
+        diff = numberValue(a, 'ageDays') - numberValue(b, 'ageDays');
+      } else if (key === 'title') {
+        diff = textValue(a, 'sortTitle').localeCompare(textValue(b, 'sortTitle'));
+      } else if (key === 'size') {
+        diff = numberValue(a, 'sizeBytes') - numberValue(b, 'sizeBytes');
+      } else if (key === 'peers') {
+        diff = numberValue(a, 'seeders') - numberValue(b, 'seeders');
+        if (!diff) diff = numberValue(b, 'leechers') - numberValue(a, 'leechers');
+        if (!diff) diff = numberValue(a, 'qualityScore') - numberValue(b, 'qualityScore');
+      } else if (key === 'quality') {
+        diff = numberValue(a, 'qualityScore') - numberValue(b, 'qualityScore');
+        if (!diff) diff = numberValue(a, 'mediaScore') - numberValue(b, 'mediaScore');
+        if (!diff) diff = numberValue(a, 'seeders') - numberValue(b, 'seeders');
+      } else if (key === 'token') {
+        diff = numberValue(a, 'tokenScore') - numberValue(b, 'tokenScore');
+        if (!diff) diff = numberValue(a, 'qualityScore') - numberValue(b, 'qualityScore');
+        if (!diff) diff = numberValue(a, 'seeders') - numberValue(b, 'seeders');
+      }
+
+      if (!diff) {
+        return numberValue(a, 'originalOrder') - numberValue(b, 'originalOrder');
+      }
+      return direction === 'desc' ? -diff : diff;
+    });
+
+    rows.forEach((row) => tbody.appendChild(row));
+
+    picker.querySelectorAll('.torrent-sort-button').forEach((sortButton) => {
+      sortButton.setAttribute('aria-sort', 'none');
+      const arrow = sortButton.querySelector('.torrent-sort-arrow');
+      if (arrow) {
+        arrow.innerHTML = '';
+        arrow.style.opacity = '.35';
+      }
+    });
+
+    button.setAttribute('aria-sort', direction === 'desc' ? 'descending' : 'ascending');
+    const activeArrow = button.querySelector('.torrent-sort-arrow');
+    if (activeArrow) {
+      activeArrow.innerHTML = direction === 'desc' ? '&#9660;' : '&#9650;';
+      activeArrow.style.opacity = '1';
+    }
+  };
+</script>

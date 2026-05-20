@@ -1,6 +1,5 @@
 import asyncio
 import re
-import unicodedata
 import urllib.parse
 from fastapi import APIRouter, Request, Depends, Query
 from fastapi.responses import HTMLResponse
@@ -12,10 +11,28 @@ from app.services.platforms import get_platform_links
 from app.services.album_cache import get_cached_album, save_album_cache
 from app.models.request import AlbumRequest
 from app.database import get_db
-from app.utils import normalize_album
-from app.services.navidrome import get_collection
+from app.utils import find_collection_album
+from app.services.navidrome import get_album_tracks, get_collection
+from app.services.redacted import red_client
 
 router = APIRouter()
+
+
+async def _tracker_album_title_hint(artist: str, album: str, year: str) -> str:
+    if not artist or not album or not year:
+        return album
+    try:
+        groups = await red_client.search_torrents(artist, album)
+    except Exception:
+        return album
+
+    for group in groups:
+        if str(group.get("groupYear") or "")[:4] != str(year)[:4]:
+            continue
+        group_name = (group.get("groupName") or "").strip()
+        if group_name:
+            return group_name
+    return album
 
 
 @router.get("/album/{mb_id}", response_class=HTMLResponse)
@@ -24,22 +41,32 @@ async def album_detail(
     mb_id: str,
     artist: str = Query(default=""),
     album: str = Query(default=""),
+    year: str = Query(default=""),
     cover: str = Query(default=""),
     deezer_id: str = Query(default=""),
     highlight: str = Query(default=""),
     db: AsyncSession = Depends(get_db),
 ):
     real_mb_id = mb_id if mb_id != "_" else ""
+    requested_year = year.strip()[:4]
+    collection = await get_collection()
+    if (
+        artist
+        and album
+        and requested_year
+        and not find_collection_album(artist, album, collection, year=requested_year, mb_id=real_mb_id, cover_url=cover)
+    ):
+        album = await _tracker_album_title_hint(artist, album, requested_year)
 
     # Check SQLite cache (skip if deezer_id since that's a direct import with fresh data)
     cached = None
     if artist and album and not deezer_id:
-        cached = await get_cached_album(artist, album)
+        cached = await get_cached_album(artist, album, year=year, mb_id=real_mb_id)
 
     if cached:
         artist_name  = cached["artist"]
         album_title  = cached["album"]
-        year         = cached["year"]
+        year         = cached.get("year") or requested_year
         release_date = cached["release_date"]
         cover_url    = cached.get("cover_url") or cover or None
         tracks       = cached["tracks"]
@@ -83,7 +110,7 @@ async def album_detail(
         deezer_date = (deezer or {}).get("release_date", "")
         itunes_date = (itunes or {}).get("release_date", "")
         release_date = mb_date or deezer_date or itunes_date
-        year = release_date[:4] if release_date else ""
+        year = release_date[:4] if release_date else requested_year
         platform_links = await get_platform_links(
             artist_name, album_title, itunes_url=itunes_url, mb_id=real_mb_id
         )
@@ -98,32 +125,41 @@ async def album_detail(
                 if best and global_plays.get(best["name"].lower(), 0) > 0:
                     most_played_track = best["name"]
 
-        # Save to permanent cache
-        if artist_name and album_title and tracks:
-            await save_album_cache(artist_name, album_title, {
-                "artist": artist_name, "album": album_title,
-                "year": year, "release_date": release_date,
-                "cover_url": cover_url, "tracks": tracks, "tags": tags,
-                "label": label, "genre": genre, "listeners": listeners,
-                "playcount": playcount, "release_type": release_type,
-                "platform_links": platform_links, "yt_url": yt_url,
-                "most_played_track": most_played_track,
-            })
-
     result = await db.execute(
         select(AlbumRequest).where(AlbumRequest.musicbrainz_id == real_mb_id)
     )
     existing_request = result.scalar_one_or_none()
 
-    def _nfc(s: str) -> str:
-        return unicodedata.normalize("NFC", s).lower()
-
-    norm_album = _nfc(normalize_album(album_title))
-    artist_norm = _nfc(artist_name)
-    in_collection = any(
-        _nfc(a["artist"]) == artist_norm and _nfc(normalize_album(a["album"])) == norm_album
-        for a in await get_collection()
+    collection_match = find_collection_album(
+        artist_name,
+        album_title,
+        collection,
+        year=requested_year or year,
+        mb_id=real_mb_id,
+        cover_url=cover_url or "",
     )
+    in_collection = bool(collection_match)
+    if collection_match:
+        if requested_year and str(year or "")[:4] != requested_year:
+            year = requested_year
+            release_date = release_date if str(release_date or "").startswith(requested_year) else requested_year
+        cover_url = collection_match.get("cover_url") or cover_url
+        nav_tracks = await get_album_tracks(collection_match.get("nav_id", ""))
+        if nav_tracks:
+            tracks = nav_tracks
+
+    # Save to permanent cache after local-collection corrections are applied.
+    if not cached and artist_name and album_title and tracks:
+        await save_album_cache(artist_name, album_title, {
+            "artist": artist_name, "album": album_title,
+            "mb_id": real_mb_id,
+            "year": year, "release_date": release_date,
+            "cover_url": cover_url, "tracks": tracks, "tags": tags,
+            "label": label, "genre": genre, "listeners": listeners,
+            "playcount": playcount, "release_type": release_type,
+            "platform_links": platform_links, "yt_url": yt_url,
+            "most_played_track": most_played_track,
+        })
 
     return templates.TemplateResponse("album_detail.html", {
         "request": request,

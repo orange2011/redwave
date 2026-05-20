@@ -1,5 +1,38 @@
 {% extends "base.html" %}
 {% block title %}{{ artist }} - {{ album }} — Redwave{% endblock %}
+{% block head %}
+<style>
+  .detail-panel {
+    background: var(--panel);
+    border: 1px solid var(--border-soft);
+    border-radius: 10px;
+    padding: clamp(1rem, 2vw, 2rem);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    box-shadow: 0 18px 55px rgba(0,0,0,0.28);
+    margin-bottom: 0.9rem;
+  }
+  .detail-tracklist {
+    padding: 1.25rem;
+    margin-bottom: 2rem;
+  }
+  .detail-track-row {
+    background: rgba(255,255,255,0.015);
+    border-radius: 8px;
+  }
+  .theme-light .detail-track-row {
+    background: rgba(24,32,43,0.03);
+  }
+  .detail-primary-action {
+    border-radius: 8px;
+  }
+  @media (max-width: 640px) {
+    .detail-tracklist {
+      padding: 0.9rem;
+    }
+  }
+</style>
+{% endblock %}
 
 {% block content %}
 {% if cover_url %}
@@ -10,19 +43,22 @@
   background-image: url('{{ cover_url }}');
   background-size: cover;
   background-position: center;
-  filter: blur(80px) brightness(0.25) saturate(1.4);
+  filter: var(--art-backdrop-filter);
   transform: scale(1.1);
   pointer-events: none;
 "></div>
 {% endif %}
 <div style="position: relative; z-index: 1;">
-<div style="background: rgba(10,10,18,0.75); border: 1px solid rgba(255,255,255,0.07); border-bottom: none; border-radius: 0; padding: 2rem; backdrop-filter: blur(8px);">
+<div class="detail-panel">
 <div class="flex flex-col md:flex-row gap-8">
   <!-- Cover -->
   <div class="flex-shrink-0 flex justify-center md:block">
     {% if cover_url %}
-    <img src="{{ cover_url }}" alt="{{ album }}" onclick="openLightbox(this.src)"
-         class="w-56 h-56 md:w-64 md:h-64 object-cover rounded-2xl shadow-2xl cursor-zoom-in">
+    <div class="w-56 h-56 md:w-64 md:h-64 rounded-2xl shadow-2xl skeleton-surface flex items-center justify-center text-7xl text-gray-600">
+      <img src="{{ cover_url }}" alt="{{ album }}" onclick="openLightbox(this.src)"
+           class="w-full h-full object-cover rounded-2xl cursor-zoom-in"
+           onerror="this.parentElement.classList.add('has-error'); this.parentElement.innerHTML='♪'">
+    </div>
     {% else %}
     <div class="w-56 h-56 md:w-64 md:h-64 bg-card rounded-2xl flex items-center justify-center text-7xl shadow-2xl">♪</div>
     {% endif %}
@@ -89,11 +125,13 @@
         hx-get="/api/torrents/search?mb_id={{ real_mb_id }}&artist={{ artist | urlencode }}&album={{ album | urlencode }}&year={{ year }}&cover_url={{ cover_url | urlencode if cover_url else '' }}"
         hx-target="#modal-container"
         hx-indicator="#request-spinner"
+        data-toast-success="Tracker results loaded."
+        data-toast-error="Tracker search failed."
         style="box-shadow: 0 0 0 1px rgba(192,57,43,0.6), 0 4px 14px rgba(192,57,43,0.35);"
-        class="px-6 py-2.5 bg-accent hover:bg-accentHover text-white font-bold tracking-wide transition-all cursor-pointer uppercase text-sm">
-        Find on RED
+        class="detail-primary-action px-6 py-2.5 bg-accent hover:bg-accentHover text-white font-bold tracking-wide transition-all cursor-pointer uppercase text-sm">
+        Find Release
       </button>
-      <span id="request-spinner" class="htmx-indicator text-muted self-center text-sm">Searching RED...</span>
+      <span id="request-spinner" class="htmx-indicator text-muted self-center text-sm">Searching trackers...</span>
       <a href="{{ yt_url }}" target="_blank" title="YouTube Preview"
          class="hover:opacity-80 transition-all flex items-center justify-center">
         <svg width="56" height="40" viewBox="0 -7 48 48" xmlns="http://www.w3.org/2000/svg">
@@ -125,17 +163,17 @@
 
 <!-- Tracklist -->
 {% if tracks %}
-<div style="background: rgba(10,10,18,0.75); border: 1px solid rgba(255,255,255,0.07); border-top: none; border-radius: 0; padding: 1.5rem; backdrop-filter: blur(8px); margin-bottom: 2rem;">
+<div class="detail-panel detail-tracklist">
   <h2 class="text-lg font-semibold text-gray-300 mb-3">Tracklist</h2>
   <div class="rounded-xl overflow-hidden">
     {% for t in tracks %}
     {% set is_highlighted = highlight_track and (t.name | lower == highlight_track | lower) %}
     {% set is_most_played = most_played_track and (t.name | lower == most_played_track | lower) and not is_highlighted %}
-    <div class="flex items-center gap-3 px-4 py-2.5 {% if not loop.last %}border-b border-border{% endif %} hover:bg-cardHover transition-colors"
-         {% if is_highlighted %}style="background:rgba(162,56,255,0.12); border-left:3px solid #a238ff;"{% endif %}>
+    <div class="detail-track-row flex items-center gap-3 px-4 py-2.5 {% if not loop.last %}border-b border-border{% endif %} hover:bg-cardHover transition-colors"
+         {% if is_highlighted %}style="background:rgba(162,56,255,0.12); border-left:3px solid var(--purple);" {% endif %}>
       <span class="text-muted text-xs w-5 text-right flex-shrink-0">{{ t.rank }}</span>
-      <span class="text-sm flex-1 {% if is_highlighted %}font-semibold{% endif %}" style="color:{% if is_highlighted %}#c084fc{% else %}white{% endif %};">{{ t.name }}</span>
-      {% if is_highlighted %}<span class="text-xs flex-shrink-0" style="color:#a238ff;">LB pick</span>{% endif %}
+      <span class="text-sm flex-1 {% if is_highlighted %}font-semibold{% endif %}" style="color:{% if is_highlighted %}#c084fc{% else %}var(--text){% endif %};">{{ t.name }}</span>
+      {% if is_highlighted %}<span class="text-xs flex-shrink-0" style="color:var(--purple);">LB pick</span>{% endif %}
       {% if is_most_played %}<span class="text-xs flex-shrink-0" style="color:#f59e0b;">★ most played</span>{% endif %}
       <!-- Deezer 30s preview -->
       {% if t.preview %}
@@ -160,22 +198,19 @@
 </div>
 {% endif %}
 
-<!-- Modal -->
-<div id="modal-container"></div>
 </div>
 
 <!-- Lightbox -->
 <div id="lightbox" onclick="closeLightbox()"
      style="display:none; position:fixed; inset:0; z-index:1000; background:rgba(0,0,0,0.92); cursor:zoom-out; align-items:center; justify-content:center;">
-  <img id="lightbox-img" src="" alt=""
-       style="max-width:90vmin; max-height:90vmin; border-radius:0.5rem; box-shadow:0 0 60px rgba(0,0,0,0.8);">
+  <div id="lightbox-frame"></div>
 </div>
 
 <!-- Floating player — bottom-right card -->
 <div id="player-bar" style="
   display:none; position:fixed; bottom:1.25rem; right:1.25rem; z-index:2000;
   width:min(340px, calc(100vw - 2rem));
-  background:rgba(10,10,18,0.55); border:1px solid rgba(255,255,255,0.08); border-radius:14px;
+  background:var(--panel-soft); border:1px solid var(--border-soft); border-radius:14px;
   backdrop-filter:blur(24px); -webkit-backdrop-filter:blur(24px);
   padding:0.75rem; flex-direction:column; gap:0.6rem;
   box-shadow:0 8px 32px rgba(0,0,0,0.6);">
@@ -183,9 +218,9 @@
   <div style="display:flex; align-items:center; gap:0.75rem;">
     <div style="flex:1; min-width:0;">
       <p id="player-title" class="text-white text-xs font-semibold truncate"></p>
-      <p id="player-type" style="color:#6b7280; font-size:0.65rem;"></p>
+      <p id="player-type" style="color:var(--subtle); font-size:0.65rem;"></p>
     </div>
-    <button onclick="stopAll()" style="color:#6b7280; font-size:1rem; background:none; border:none; cursor:pointer; flex-shrink:0; line-height:1;" title="Stop">■</button>
+    <button onclick="stopAll()" style="color:var(--subtle); font-size:1rem; background:none; border:none; cursor:pointer; flex-shrink:0; line-height:1;" title="Stop">■</button>
   </div>
   <!-- Deezer audio with native controls -->
   <audio id="preview-audio" controls preload="none"
@@ -200,11 +235,18 @@
 // ── Lightbox ──────────────────────────────────────────────────────────────────
 function openLightbox(src) {
   const lb = document.getElementById('lightbox');
-  document.getElementById('lightbox-img').src = src;
+  const frame = document.getElementById('lightbox-frame');
+  frame.replaceChildren();
+  const img = document.createElement('img');
+  img.src = src;
+  img.alt = '';
+  img.style.cssText = 'width:min(92vw, 760px); height:auto; max-height:92vh; object-fit:contain; border-radius:0.5rem; box-shadow:0 0 60px rgba(0,0,0,0.8);';
+  frame.appendChild(img);
   lb.style.display = 'flex';
 }
 function closeLightbox() {
   document.getElementById('lightbox').style.display = 'none';
+  document.getElementById('lightbox-frame').replaceChildren();
 }
 document.addEventListener('keydown', e => { if (e.key === 'Escape') closeLightbox(); });
 

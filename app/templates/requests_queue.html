@@ -29,7 +29,7 @@
             {% else %}
             <div class="w-10 h-10 rounded-lg bg-border flex items-center justify-center text-lg">🎵</div>
             {% endif %}
-            <a href="/album/{{ req.musicbrainz_id }}" class="text-white text-sm font-medium hover:text-accent">{{ req.album }}</a>
+            <a href="/album/{{ req.musicbrainz_id if req.musicbrainz_id else '_' }}?artist={{ req.artist | urlencode }}&album={{ req.album | urlencode }}{% if req.year %}&year={{ req.year | urlencode }}{% endif %}" class="text-white text-sm font-medium hover:text-accent">{{ req.album }}</a>
           </div>
         </td>
         <td class="px-6 py-4 text-gray-400 text-sm">{{ req.artist }}</td>

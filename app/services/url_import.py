@@ -1,7 +1,10 @@
 import asyncio
 import re
+import html
 import httpx
 import urllib.parse
+
+from app.services.redacted import red_client
 
 _client = None
 
@@ -12,9 +15,121 @@ def _get_client():
     return _client
 
 
+def _first_meta(text: str, property_name: str) -> str:
+    pattern = rf'<meta\s+(?:property|name)="{re.escape(property_name)}"\s+content="([^"]+)"'
+    match = re.search(pattern, text, re.IGNORECASE)
+    return match.group(1).strip() if match else ""
+
+
+def _clean_apple_artist_title(value: str) -> str:
+    return re.sub(r"\s+on Apple Music$", "", value or "", flags=re.IGNORECASE).strip()
+
+
+def _artist_result(name: str, image: str | None = None, mb_id: str = "", source: str = "") -> dict | None:
+    name = (name or "").strip()
+    if not name:
+        return None
+    return {
+        "kind": "artist",
+        "artist": name,
+        "image": image or None,
+        "mb_id": mb_id,
+        "source": source,
+    }
+
+
+def _strip_red_markup(value: str) -> str:
+    text = html.unescape(value or "")
+    text = re.sub(r"<br\s*/?>", "\n", text, flags=re.IGNORECASE)
+    text = re.sub(r"<[^>]+>", " ", text)
+    text = re.sub(r"\[(?:/?(?:b|i|u|artist|url|align|size|quote|hide|spoiler|img|code)[^\]]*)\]", " ", text, flags=re.IGNORECASE)
+    text = text.replace("&ndash;", "-")
+    return text
+
+
+def _red_summary(value: str) -> str:
+    text = _strip_red_markup(value)
+    lines = []
+    for raw_line in text.splitlines():
+        line = re.sub(r"\s+", " ", raw_line).strip(" -*\t\r\n")
+        if not line:
+            continue
+        if re.match(r"^\d{1,3}\.\s+", line):
+            continue
+        if re.search(r"\(\d{1,2}:\d{2}\)", line) and len(line) < 140:
+            continue
+        if line.lower() in {"track list", "tracklist"}:
+            continue
+        lines.append(line)
+    text = " ".join(lines)
+    text = re.sub(r"\s+", " ", text).strip()
+    if len(text) > 900:
+        text = text[:900].rsplit(" ", 1)[0].rstrip(".,;:") + "..."
+    return text
+
+
+def _red_artist_names(music_info: dict) -> list[str]:
+    names = []
+    for key in ("artists", "with", "composers", "dj", "conductor", "remixedBy", "producer"):
+        for item in music_info.get(key) or []:
+            name = (item.get("name") or "").strip()
+            if name and name not in names:
+                names.append(name)
+    return names
+
+
+def _red_group_result(group_id: str, data: dict) -> dict | None:
+    group = data.get("group") or {}
+    if not group:
+        return None
+    names = _red_artist_names(group.get("musicInfo") or {})
+    artist = " / ".join(names) or "Various Artists"
+    album = group.get("name") or ""
+    if not album:
+        return None
+    body = group.get("bbBody") or group.get("wikiBody") or ""
+    return {
+        "artist": artist,
+        "album": album,
+        "cover_url": group.get("wikiImage") or None,
+        "mb_id": "",
+        "year": str(group.get("year") or ""),
+        "source": "red",
+        "red_group_id": group_id,
+        "red_summary": _red_summary(body),
+        "red_tags": group.get("tags") or [],
+    }
+
+
 async def resolve_url(url: str) -> dict | None:
-    """Try to resolve a platform URL to album info. Returns dict with artist/album/cover_url/mb_id or None."""
+    """Resolve a music platform URL to album or artist info."""
     url = url.strip()
+
+    # RED torrent group: https://redacted.sh/torrents.php?id=2786495
+    m = re.match(r'https?://(?:www\.)?redacted\.sh/torrents\.php\?(?:[^#]*&)?id=(\d+)', url)
+    if m:
+        group_id = m.group(1)
+        try:
+            return _red_group_result(group_id, await red_client.get_torrent_group(group_id))
+        except Exception:
+            return None
+
+    # RED artist: https://redacted.sh/artist.php?id=10530 or ?artistname=F.S.Blumm
+    m = re.match(r'https?://(?:www\.)?redacted\.sh/artist\.php\?([^#]+)', url)
+    if m:
+        query = urllib.parse.parse_qs(m.group(1))
+        try:
+            info = await red_client.get_artist_info(
+                artist_id=(query.get("id") or [""])[0],
+                artist_name=(query.get("artistname") or [""])[0],
+            )
+            return _artist_result(
+                info.get("name", ""),
+                info.get("image") or None,
+                source="red",
+            )
+        except Exception:
+            return None
 
     # Last.fm: https://www.last.fm/music/Artist/Album
     m = re.match(r'https?://(?:www\.)?last\.fm/music/([^/]+)/([^/?#]+)', url)
@@ -22,6 +137,12 @@ async def resolve_url(url: str) -> dict | None:
         artist = urllib.parse.unquote_plus(m.group(1)).replace('+', ' ')
         album = urllib.parse.unquote_plus(m.group(2)).replace('+', ' ')
         return {"artist": artist, "album": album, "cover_url": None, "mb_id": ""}
+
+    # Last.fm artist: https://www.last.fm/music/Artist
+    m = re.match(r'https?://(?:www\.)?last\.fm/music/([^/?#]+)(?:[/?#]|$)', url)
+    if m:
+        artist = urllib.parse.unquote_plus(m.group(1)).replace('+', ' ')
+        return _artist_result(artist, source="lastfm")
 
     # Deezer: https://www.deezer.com/*/album/12345
     m = re.match(r'https?://(?:www\.)?deezer\.com/(?:[a-z]+/)?album/(\d+)', url)
@@ -33,6 +154,21 @@ async def resolve_url(url: str) -> dict | None:
             album = data.get("title", "")
             cover = data.get("cover_xl") or data.get("cover_big") or data.get("cover", "")
             return {"artist": artist, "album": album, "cover_url": cover, "mb_id": "", "deezer_id": m.group(1)}
+        except Exception:
+            pass
+
+    # Deezer artist: https://www.deezer.com/*/artist/12345
+    m = re.match(r'https?://(?:www\.)?deezer\.com/(?:[a-z]+/)?artist/(\d+)', url)
+    if m:
+        try:
+            r = await _get_client().get(f"https://api.deezer.com/artist/{m.group(1)}")
+            data = r.json()
+            if not data.get("error"):
+                return _artist_result(
+                    data.get("name", ""),
+                    data.get("picture_xl") or data.get("picture_big") or data.get("picture"),
+                    source="deezer",
+                )
         except Exception:
             pass
 
@@ -48,6 +184,27 @@ async def resolve_url(url: str) -> dict | None:
                     album = item.get("collectionName", "")
                     cover = item.get("artworkUrl100", "").replace("100x100", "600x600")
                     return {"artist": artist, "album": album, "cover_url": cover, "mb_id": ""}
+        except Exception:
+            pass
+
+    # Apple Music artist: https://music.apple.com/*/artist/*/{id}
+    m = re.match(r'https?://music\.apple\.com/(?:[a-z]{2}/)?artist/[^/]+/(\d+)', url)
+    if m:
+        try:
+            r = await _get_client().get(f"https://itunes.apple.com/lookup?id={m.group(1)}")
+            for item in r.json().get("results", []):
+                if item.get("wrapperType") == "artist":
+                    return _artist_result(item.get("artistName", ""), source="apple")
+        except Exception:
+            pass
+        try:
+            r = await _get_client().get(
+                url,
+                headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"},
+            )
+            title = _clean_apple_artist_title(_first_meta(r.text, "og:title"))
+            image = _first_meta(r.text, "og:image")
+            return _artist_result(title, image, source="apple")
         except Exception:
             pass
 
@@ -71,6 +228,21 @@ async def resolve_url(url: str) -> dict | None:
                 cover = data.get("images", [{}])[0].get("uri", "") if data.get("images") else ""
             if artist and album:
                 return {"artist": artist, "album": album, "cover_url": cover or None, "mb_id": ""}
+        except Exception:
+            pass
+
+    # Discogs artist: https://www.discogs.com/artist/12345-Name
+    m = re.match(r'https?://(?:www\.)?discogs\.com/artist/(\d+)', url)
+    if m:
+        try:
+            r = await _get_client().get(
+                f"https://api.discogs.com/artists/{m.group(1)}",
+                headers={"User-Agent": "Redwave/1.0"},
+            )
+            data = r.json()
+            images = data.get("images") or []
+            image = images[0].get("uri", "") if images else ""
+            return _artist_result(data.get("name", ""), image, source="discogs")
         except Exception:
             pass
 
@@ -107,6 +279,21 @@ async def resolve_url(url: str) -> dict | None:
             album = data.get("title", "")
             if artist and album:
                 return {"artist": artist, "album": album, "cover_url": None, "mb_id": ""}
+        except Exception:
+            pass
+
+    # MusicBrainz artist: https://musicbrainz.org/artist/{mbid}
+    m = re.match(r'https?://(?:www\.)?musicbrainz\.org/artist/([0-9a-f-]{36})(?:[/?#]|$)', url)
+    if m:
+        mb_id = m.group(1)
+        try:
+            r = await _get_client().get(
+                f"https://musicbrainz.org/ws/2/artist/{mb_id}",
+                params={"fmt": "json"},
+                headers={"User-Agent": "Redwave/1.0 (redwave@example.com)"},
+            )
+            data = r.json()
+            return _artist_result(data.get("name", ""), mb_id=mb_id, source="musicbrainz")
         except Exception:
             pass
 
@@ -159,6 +346,35 @@ async def resolve_url(url: str) -> dict | None:
             pass
         return None
 
+    # Spotify artist: https://open.spotify.com/artist/{id}
+    m = re.match(r'https?://open\.spotify\.com/artist/([A-Za-z0-9]+)', url)
+    if m:
+        artist_id = m.group(1)
+        try:
+            import json as _json
+            client = _get_client()
+            page_r, oembed_r = await asyncio.gather(
+                client.get(
+                    f"https://open.spotify.com/artist/{artist_id}",
+                    headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"},
+                ),
+                client.get("https://open.spotify.com/oembed", params={"url": url}),
+            )
+            name = ""
+            ld_m = re.search(r'<script type="application/ld\+json">(.*?)</script>', page_r.text, re.DOTALL)
+            if ld_m:
+                ld = _json.loads(ld_m.group(1))
+                name = ld.get("name", "")
+            oembed = oembed_r.json()
+            return _artist_result(
+                name or oembed.get("title", ""),
+                oembed.get("thumbnail_url", ""),
+                source="spotify",
+            )
+        except Exception:
+            pass
+        return None
+
     # Bandcamp: https://{artist}.bandcamp.com/album/{slug}
     m = re.match(r'https?://[^/]+\.bandcamp\.com/album/[^/?#]+', url)
     if m:
@@ -199,6 +415,20 @@ async def resolve_url(url: str) -> dict | None:
                     "cover_url": og_image.group(1) if og_image else None,
                     "mb_id": "",
                 }
+        except Exception:
+            pass
+
+    # Bandcamp artist root: https://artist.bandcamp.com/
+    m = re.match(r'https?://[^/]+\.bandcamp\.com/?(?:[?#].*)?$', url)
+    if m:
+        try:
+            r = await _get_client().get(
+                url,
+                headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"},
+            )
+            title = _first_meta(r.text, "og:site_name") or _first_meta(r.text, "og:title")
+            image = _first_meta(r.text, "og:image")
+            return _artist_result(title, image, source="bandcamp")
         except Exception:
             pass
 

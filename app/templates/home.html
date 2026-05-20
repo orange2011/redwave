@@ -1,188 +1,396 @@
 {% extends "base.html" %}
 {% block title %}Redwave — Home{% endblock %}
+{% block main_class %}w-full px-0 pt-14{% endblock %}
+
+{% block head %}
+<style>
+  .home-shell {
+    min-height: calc(100vh - 3.5rem);
+    padding: 1.25rem 0 4rem;
+    background: var(--page-tint);
+  }
+  .home-section {
+    padding-left: clamp(0.85rem, 1.55vw, 2rem);
+  }
+  .home-section {
+    margin-bottom: 2.05rem;
+  }
+  .section-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    margin-bottom: 0.72rem;
+    padding-right: clamp(0.85rem, 1.55vw, 2rem);
+  }
+  .section-title-group {
+    min-width: 0;
+  }
+  .section-title-line {
+    display: flex;
+    align-items: center;
+    gap: 0.38rem;
+  }
+  .section-title-line h2 {
+    color: var(--text);
+    font-size: clamp(1.18rem, 1.55vw, 1.72rem);
+    line-height: 1.05;
+    font-weight: 900;
+    letter-spacing: 0;
+    margin: 0;
+  }
+  .section-title-group span {
+    display: block;
+    color: var(--muted);
+    font-size: 0.78rem;
+    margin-top: 0.18rem;
+  }
+  .shelf-arrow {
+    border: 0;
+    color: var(--muted);
+    cursor: pointer;
+    transition: color .16s, background .16s, border-color .16s;
+  }
+  .shelf-arrow:hover {
+    color: var(--text);
+    background: var(--panel-hover);
+    border-color: var(--border-soft);
+  }
+  .scroll-controls {
+    display: flex;
+    align-items: center;
+    gap: 0.42rem;
+    flex-shrink: 0;
+    margin-top: 0.12rem;
+  }
+  .shelf-arrow {
+    position: relative;
+    width: 2.15rem;
+    height: 2.15rem;
+    border-radius: 999px;
+    background: var(--panel-soft);
+    border: 1px solid var(--border-soft);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0;
+    line-height: 0;
+  }
+  .shelf-arrow::before {
+    content: "";
+    width: 0.55rem;
+    height: 0.55rem;
+    border-top: 2px solid currentColor;
+    border-right: 2px solid currentColor;
+    transform: rotate(45deg);
+    margin-left: -0.18rem;
+  }
+  .shelf-arrow[data-scroll-dir="-1"]::before {
+    transform: rotate(225deg);
+    margin-left: 0.18rem;
+  }
+  .media-row {
+    display: grid;
+    grid-auto-flow: column;
+    grid-auto-columns: clamp(172px, 11.6vw, 232px);
+    gap: 1rem;
+    overflow-x: auto;
+    overflow-y: hidden;
+    overscroll-behavior-inline: contain;
+    scroll-behavior: smooth;
+    scroll-padding-inline: 0 clamp(0.85rem, 1.55vw, 2rem);
+    scroll-snap-type: x mandatory;
+    padding: 0 clamp(0.85rem, 1.55vw, 2rem) 0.55rem 0;
+    scrollbar-width: none;
+  }
+  .media-row::-webkit-scrollbar {
+    display: none;
+  }
+  .media-card {
+    position: relative;
+    display: block;
+    min-width: 0;
+    color: inherit;
+    text-decoration: none;
+    scroll-snap-align: start;
+  }
+  .media-cover {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 1 / 1;
+    border-radius: 8px;
+    background: var(--cover-bg);
+    border: 1px solid var(--border-soft);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    color: var(--subtle);
+    font-size: 2.1rem;
+    box-shadow: 0 14px 28px rgba(0,0,0,0.32);
+    transition: transform .16s, border-color .16s, filter .16s;
+  }
+  .media-card:hover .media-cover {
+    transform: translateY(-2px);
+    border-color: var(--border);
+    filter: brightness(1.08);
+  }
+  .media-cover img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+  }
+  .media-info {
+    min-height: 3.45rem;
+    padding: 0.62rem 0.1rem 0;
+  }
+  .media-title,
+  .media-subtitle,
+  .media-meta {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .media-title {
+    color: var(--text);
+    font-size: 0.86rem;
+    line-height: 1.18;
+    font-weight: 850;
+    margin-bottom: 0.16rem;
+  }
+  .media-subtitle {
+    color: var(--text-soft);
+    font-size: 0.78rem;
+  }
+  .media-meta {
+    color: var(--purple);
+    font-size: 0.73rem;
+    margin-top: 0.24rem;
+  }
+  .collection-check {
+    position: absolute;
+    top: 0.42rem;
+    right: 0.42rem;
+    z-index: 2;
+    width: 1.45rem;
+    height: 1.45rem;
+    border-radius: 999px;
+    background: #22c55e;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #fff;
+    font-size: 0.9rem;
+    font-weight: 900;
+    box-shadow: 0 6px 18px rgba(0,0,0,0.45);
+  }
+  .empty-row {
+    color: var(--muted);
+    font-size: 0.9rem;
+    padding: 0.7rem 0 1.5rem;
+  }
+  @media (max-width: 720px) {
+    .home-shell { padding-top: 1rem; }
+    .section-head { align-items: flex-end; }
+    .section-title-group span { display: none; }
+    .media-row {
+      grid-auto-columns: minmax(146px, 43vw);
+      gap: 0.78rem;
+      padding-right: 0.85rem;
+      scroll-padding-right: 0.85rem;
+    }
+    .scroll-controls { display: none; }
+  }
+</style>
+{% endblock %}
 
 {% block content %}
 
-{% macro collection_badge(artist, album) %}
-{% if ((artist | normalize_artist) + '|' + (album | normalize_album | lower)) in collection_keys %}
-<img src="/static/check.svg" alt="In Collection"
-     style="position:absolute; top:5px; right:5px; width:22px; height:22px; filter:drop-shadow(0 1px 3px rgba(0,0,0,0.7)); z-index:1;">
+{% macro collection_badge(in_collection) %}
+{% if in_collection %}
+<span class="collection-check" title="In collection">✓</span>
 {% endif %}
 {% endmacro %}
 
-<!-- Weekly Exploration + Albums You Might Like -->
-<section class="mb-10">
-  <div class="flex items-baseline gap-3 mb-4">
-    <h2 class="text-lg font-semibold text-gray-300">Recommendations</h2>
-    <span class="text-xs text-muted">Week of {{ rec_week }}</span>
+{% macro shelf_head(title, detail="") %}
+<div class="section-head">
+  <div class="section-title-group">
+    <div class="section-title-line">
+      <h2>{{ title }}</h2>
+    </div>
+    {% if detail %}<span>{{ detail }}</span>{% endif %}
   </div>
+  <div class="scroll-controls" aria-hidden="false">
+    <button type="button" class="shelf-arrow" data-scroll-dir="-1" aria-label="Scroll {{ title }} left">‹</button>
+    <button type="button" class="shelf-arrow" data-scroll-dir="1" aria-label="Scroll {{ title }} right">›</button>
+  </div>
+</div>
+{% endmacro %}
 
-  <!-- Weekly Exploration -->
+{% macro media_card(href, cover_url, title, subtitle, meta, in_collection=False) %}
+<a href="{{ href }}" class="media-card">
+  {{ collection_badge(in_collection) }}
+  <div class="media-cover{% if cover_url %} skeleton-surface{% else %} has-error{% endif %}">
+    {% if cover_url %}
+    <img src="{{ cover_url }}" alt="{{ title }}" loading="lazy" onerror="this.parentElement.classList.add('has-error'); this.parentElement.innerHTML='♪'">
+    {% else %}
+    ♪
+    {% endif %}
+  </div>
+  <div class="media-info">
+    <div class="media-title">{{ title }}</div>
+    <div class="media-subtitle">{{ subtitle }}</div>
+    {% if meta %}<div class="media-meta">{{ meta }}</div>{% endif %}
+  </div>
+</a>
+{% endmacro %}
+
+{% macro album_href(mb_id, artist, album, cover_url, highlight="", year="") -%}
+/album/{{ mb_id if mb_id else '_' }}?artist={{ artist | urlencode }}&album={{ album | urlencode }}&cover={{ (cover_url or '') | urlencode }}{% if year %}&year={{ year | urlencode }}{% endif %}{% if highlight %}&highlight={{ highlight | urlencode }}{% endif %}
+{%- endmacro %}
+
+<div class="home-shell">
   {% for playlist in lb_playlists %}
   {% if 'exploration' in playlist.title | lower and playlist.albums %}
-  <div class="flex items-baseline gap-2 mb-2">
-    <span class="text-xs text-muted uppercase tracking-wide">{{ playlist.title }}</span>
-  </div>
-  <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4 mb-6">
-    {% for a in playlist.albums if a.cover_url %}
-    <a href="/album/{{ a.album_mbid if a.album_mbid else '_' }}?artist={{ a.artist | urlencode }}&album={{ a.album | urlencode }}&cover={{ (a.cover_url or '') | urlencode }}{% if a.recommended_track %}&highlight={{ a.recommended_track | urlencode }}{% endif %}"
-       class="bg-card rounded-xl overflow-hidden hover:bg-cardHover hover:scale-105 transition-all duration-200 cursor-pointer block relative">
-      {{ collection_badge(a.artist, a.album) }}
-      {% if a.cover_url %}
-      <img src="{{ a.cover_url }}" alt="" class="w-full aspect-square object-cover"
-           onerror="this.outerHTML='<div class=\'w-full aspect-square bg-border flex items-center justify-center text-4xl text-gray-600\'>♪</div>'">
-      {% else %}
-      <div class="w-full aspect-square bg-border flex items-center justify-center text-4xl text-gray-600">♪</div>
-      {% endif %}
-      <div class="p-2">
-        <p class="text-white text-xs font-semibold truncate">{{ a.album }}</p>
-        <p class="text-muted text-xs truncate">{{ a.artist }}</p>
-        {% if a.recommended_track %}
-        <p class="text-xs truncate mt-0.5" style="color:#a238ff;">♪ {{ a.recommended_track }}</p>
-        {% endif %}
-      </div>
-    </a>
-    {% endfor %}
-  </div>
+  <section class="home-section">
+    {{ shelf_head(playlist.title, "ListenBrainz weekly discovery") }}
+    <div class="media-row" tabindex="0">
+      {% for a in playlist.albums if a.cover_url %}
+      {{ media_card(
+        album_href(a.album_mbid, a.artist, a.album, a.cover_url, a.recommended_track, a.year),
+        a.cover_url,
+        a.album,
+        a.artist,
+        "♪ " ~ a.recommended_track if a.recommended_track else "",
+        a.in_collection
+      ) }}
+      {% endfor %}
+    </div>
+  </section>
   {% endif %}
   {% endfor %}
 
-  <!-- Albums You Might Like -->
   {% if recommendations %}
-  <div class="flex items-baseline gap-2 mb-2 mt-2">
-    <span class="text-xs text-muted uppercase tracking-wide">Albums you might like</span>
-  </div>
-  <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
-    {% for album in recommendations if album.cover_url %}
-    <a href="/album/{{ album.mb_id if album.mb_id else '_' }}?artist={{ album.artist | urlencode }}&album={{ album.album | urlencode }}&cover={{ (album.cover_url or '') | urlencode }}"
-       class="bg-card rounded-xl overflow-hidden hover:bg-cardHover hover:scale-105 transition-all duration-200 cursor-pointer block relative">
-      {{ collection_badge(album.artist, album.album) }}
-      {% if album.cover_url %}
-      <img src="{{ album.cover_url }}" alt="" class="w-full aspect-square object-cover"
-           onerror="this.outerHTML='<div class=\'w-full aspect-square bg-border flex items-center justify-center text-4xl text-gray-600\'>♪</div>'">
-      {% else %}
-      <div class="w-full aspect-square bg-border flex items-center justify-center text-4xl text-gray-600">♪</div>
-      {% endif %}
-      <div class="p-2">
-        <p class="text-white text-xs font-semibold truncate">{{ album.album }}</p>
-        <p class="text-muted text-xs truncate">{{ album.artist }}</p>
-      </div>
-    </a>
-    {% endfor %}
-  </div>
+  <section class="home-section">
+    {{ shelf_head("Albums You Might Like", "Based on your recent listening") }}
+    <div class="media-row" tabindex="0">
+      {% for album in recommendations if album.cover_url %}
+      {{ media_card(
+        album_href(album.mb_id, album.artist, album.album, album.cover_url, "", album.year),
+        album.cover_url,
+        album.album,
+        album.artist,
+        "",
+        album.in_collection
+      ) }}
+      {% endfor %}
+    </div>
+  </section>
   {% endif %}
-</section>
 
-<!-- Your Top Albums This Week -->
-<section class="mb-10">
-  <h2 class="text-lg font-semibold text-gray-300 mb-4">Your Top Albums This Week</h2>
-  {% if lastfm_albums %}
-  <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
-    {% for album in lastfm_albums %}
-    <a href="/album/{{ album.mb_id if album.mb_id else '_' }}?artist={{ album.artist | urlencode }}&album={{ album.album | urlencode }}&cover={{ (album.cover_url or '') | urlencode }}"
-       class="bg-card rounded-xl overflow-hidden hover:bg-cardHover hover:scale-105 transition-all duration-200 cursor-pointer block relative">
-      {{ collection_badge(album.artist, album.album) }}
-      {% if album.cover_url %}
-      <img src="{{ album.cover_url }}" alt="{{ album.album }}" class="w-full aspect-square object-cover">
-      {% else %}
-      <div class="w-full aspect-square bg-border flex items-center justify-center text-4xl text-gray-600">♪</div>
-      {% endif %}
-      <div class="p-2">
-        <p class="text-white text-xs font-semibold truncate">{{ album.album }}</p>
-        <p class="text-muted text-xs truncate">{{ album.artist }}</p>
-        <p class="text-accent text-xs">{{ album.playcount }} plays</p>
-      </div>
-    </a>
-    {% endfor %}
-  </div>
-  {% else %}
-  <p class="text-muted text-sm">No Last.fm data yet.</p>
+  {% for playlist in lb_playlists %}
+  {% if 'jams' in playlist.title | lower and playlist.albums %}
+  <section class="home-section">
+    {{ shelf_head(playlist.title, "ListenBrainz weekly playlist") }}
+    <div class="media-row" tabindex="0">
+      {% for a in playlist.albums if a.cover_url %}
+      {{ media_card(
+        album_href(a.album_mbid, a.artist, a.album, a.cover_url, "", a.year),
+        a.cover_url,
+        a.album,
+        a.artist,
+        "",
+        a.in_collection
+      ) }}
+      {% endfor %}
+    </div>
+  </section>
   {% endif %}
-</section>
+  {% endfor %}
 
-<!-- RED Top Albums Today -->
-{% if red_top %}
-<section class="mb-10">
-  <div class="flex items-baseline gap-3 mb-4">
-    <h2 class="text-lg font-semibold text-gray-300">Top on RED Today</h2>
-    <span class="text-xs text-muted">redacted.sh</span>
-  </div>
-  <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
-    {% for a in red_top %}
-    <a href="/album/_?artist={{ a.artist | urlencode }}&album={{ a.album | urlencode }}&cover={{ (a.cover_url or '') | urlencode }}"
-       class="bg-card rounded-xl overflow-hidden hover:bg-cardHover hover:scale-105 transition-all duration-200 cursor-pointer block relative">
-      {{ collection_badge(a.artist, a.album) }}
-      {% if a.cover_url %}
-      <img src="{{ a.cover_url }}" alt="{{ a.album }}" class="w-full aspect-square object-cover"
-           onerror="this.outerHTML='<div class=\'w-full aspect-square bg-border flex items-center justify-center text-4xl text-gray-600\'>♪</div>'">
-      {% else %}
-      <div class="w-full aspect-square bg-border flex items-center justify-center text-4xl text-gray-600">♪</div>
-      {% endif %}
-      <div class="p-2">
-        <p class="text-white text-xs font-semibold truncate">{{ a.album }}</p>
-        <p class="text-muted text-xs truncate">{{ a.artist }}</p>
-        {% if a.year %}<p class="text-xs text-gray-600">{{ a.year }}</p>{% endif %}
-      </div>
-    </a>
-    {% endfor %}
-  </div>
-</section>
-{% endif %}
+  {% if red_top %}
+  <section class="home-section">
+    {{ shelf_head("Top on RED Today", "redacted.sh") }}
+    <div class="media-row" tabindex="0">
+      {% for a in red_top %}
+      {{ media_card(
+        album_href("", a.artist, a.album, a.cover_url, "", a.year),
+        a.cover_url,
+        a.album,
+        a.artist,
+        a.year,
+        a.in_collection
+      ) }}
+      {% endfor %}
+    </div>
+  </section>
+  {% endif %}
 
-<!-- Recently Added -->
-{% if recently_added %}
-<section class="mb-10">
-  <h2 class="text-lg font-semibold text-gray-300 mb-4">Recently Added</h2>
-  <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
-    {% for a in recently_added %}
-    <a href="/album/{{ a.mb_id if a.mb_id else '_' }}?artist={{ a.artist | urlencode }}&album={{ a.album | urlencode }}&cover={{ (a.cover_url or '') | urlencode }}"
-       class="bg-card rounded-xl overflow-hidden hover:bg-cardHover hover:scale-105 transition-all duration-200 cursor-pointer block relative">
-      {{ collection_badge(a.artist, a.album) }}
-      {% if a.cover_url %}
-      <img src="{{ a.cover_url }}"
-           alt="{{ a.album }}"
-           class="w-full aspect-square object-cover"
-           onerror="this.outerHTML='<div class=\'w-full aspect-square bg-border flex items-center justify-center text-4xl text-gray-600\'>♪</div>'">
-      {% else %}
-      <div class="w-full aspect-square bg-border flex items-center justify-center text-4xl text-gray-600">♪</div>
-      {% endif %}
-      <div class="p-2">
-        <p class="text-white text-xs font-semibold truncate">{{ a.album }}</p>
-        <p class="text-muted text-xs truncate">{{ a.artist }}</p>
-      </div>
-    </a>
-    {% endfor %}
-  </div>
-</section>
-{% endif %}
+  {% if recently_added %}
+  <section class="home-section">
+    {{ shelf_head("Recently Added", "Newest in Navidrome") }}
+    <div class="media-row" tabindex="0">
+      {% for a in recently_added %}
+      {{ media_card(
+        album_href(a.mb_id, a.artist, a.album, a.cover_url, "", a.year),
+        a.cover_url,
+        a.album,
+        a.artist,
+        a.year,
+        a.in_collection
+      ) }}
+      {% endfor %}
+    </div>
+  </section>
+  {% endif %}
 
-<!-- Weekly Jams -->
-{% for playlist in lb_playlists %}
-{% if 'jams' in playlist.title | lower and playlist.albums %}
-<section class="mb-10">
-  <div class="flex items-baseline gap-2 mb-4">
-    <h2 class="text-lg font-semibold text-gray-300">{{ playlist.title }}</h2>
-  </div>
-  <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
-    {% for a in playlist.albums if a.cover_url %}
-    <a href="/album/{{ a.album_mbid if a.album_mbid else '_' }}?artist={{ a.artist | urlencode }}&album={{ a.album | urlencode }}&cover={{ (a.cover_url or '') | urlencode }}"
-       class="bg-card rounded-xl overflow-hidden hover:bg-cardHover hover:scale-105 transition-all duration-200 cursor-pointer block relative">
-      {{ collection_badge(a.artist, a.album) }}
-      {% if a.cover_url %}
-      <img src="{{ a.cover_url }}" alt="" class="w-full aspect-square object-cover"
-           onerror="this.outerHTML='<div class=\'w-full aspect-square bg-border flex items-center justify-center text-4xl text-gray-600\'>♪</div>'">
-      {% else %}
-      <div class="w-full aspect-square bg-border flex items-center justify-center text-4xl text-gray-600">♪</div>
-      {% endif %}
-      <div class="p-2">
-        <p class="text-white text-xs font-semibold truncate">{{ a.album }}</p>
-        <p class="text-muted text-xs truncate">{{ a.artist }}</p>
-      </div>
-    </a>
-    {% endfor %}
-  </div>
-</section>
-{% endif %}
-{% endfor %}
+  <section class="home-section">
+    {{ shelf_head("Your Top Albums This Week", "Last.fm") }}
+    {% if lastfm_albums %}
+    <div class="media-row" tabindex="0">
+      {% for album in lastfm_albums %}
+      {{ media_card(
+        album_href(album.mb_id, album.artist, album.album, album.cover_url, "", album.year),
+        album.cover_url,
+        album.album,
+        album.artist,
+        album.playcount ~ " plays",
+        album.in_collection
+      ) }}
+      {% endfor %}
+    </div>
+    {% else %}
+    <p class="empty-row">No Last.fm data yet.</p>
+    {% endif %}
+  </section>
+</div>
+
+<script>
+  document.addEventListener('click', (event) => {
+    const button = event.target.closest('[data-scroll-dir]');
+    if (!button) return;
+
+    const section = button.closest('.home-section');
+    const row = section?.querySelector('.media-row');
+    if (!row) return;
+
+    const direction = Number(button.dataset.scrollDir || 1);
+    const firstCard = row.querySelector('.media-card');
+    const secondCard = firstCard?.nextElementSibling;
+    if (!firstCard) return;
+
+    const cardStep = secondCard
+      ? secondCard.offsetLeft - firstCard.offsetLeft
+      : firstCard.offsetWidth;
+    const visibleCards = Math.max(1, Math.floor(row.clientWidth / cardStep) - 1);
+    const currentIndex = Math.round(row.scrollLeft / cardStep);
+    const targetIndex = currentIndex + direction * visibleCards;
+    const maxScroll = row.scrollWidth - row.clientWidth;
+    const target = Math.max(0, Math.min(targetIndex * cardStep, maxScroll));
+
+    row.scrollTo({ left: target, behavior: 'smooth' });
+  });
+</script>
 
 {% endblock %}

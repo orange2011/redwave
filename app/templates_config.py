@@ -1,4 +1,5 @@
 from fastapi.templating import Jinja2Templates
+from app.config import settings
 from app.utils import normalize_album, normalize_artist
 
 templates = Jinja2Templates(directory="app/templates")
@@ -21,3 +22,4 @@ def service_logo(name: str) -> str:
 templates.env.filters["service_logo"] = service_logo
 templates.env.filters["normalize_album"] = normalize_album
 templates.env.filters["normalize_artist"] = normalize_artist
+templates.env.globals["settings"] = settings
