@@ -32,25 +32,34 @@ class SettingsTests(unittest.TestCase):
             return JSONResponse({"ok": False, "msg": "Nope"})
 
         with (
-            patch.object(settings_page, "test_red", ok),
-            patch.object(settings_page, "test_ops", fail),
+            patch.object(settings_page, "test_lastfm", ok),
+            patch.object(settings_page, "test_discogs", fail),
         ):
             results = asyncio.run(settings_page._run_configured_save_checks({
                 "RED_API_KEY": "configured",
-                "OPS_API_KEY": "configured",
+                "LASTFM_API_KEY": "configured",
+                "LASTFM_USERNAME": "configured",
+                "DISCOGS_TOKEN": "configured",
             }))
 
         by_label = {item["label"]: item for item in results}
-        self.assertTrue(by_label["RED"]["ok"])
-        self.assertFalse(by_label["OPS"]["ok"])
+        self.assertIsNone(by_label["RED"]["ok"])
+        self.assertIn("avoid tracker rate limits", by_label["RED"]["msg"])
+        self.assertTrue(by_label["Last.fm"]["ok"])
+        self.assertFalse(by_label["Discogs"]["ok"])
         self.assertIsNone(by_label["Navidrome"]["ok"])
 
     def test_settings_template_mentions_save_checks(self):
         with open("app/templates/settings.html", encoding="utf-8") as fh:
             template = fh.read()
 
-        self.assertIn("tests every configured service", template)
+        self.assertIn("tests safe configured services", template)
         self.assertIn("Settings saved, but one or more checks failed", template)
+
+    def test_tracker_rate_limit_detection(self):
+        self.assertTrue(settings_page._looks_like_tracker_rate_limit("Your IP has been temporarily banned."))
+        self.assertTrue(settings_page._looks_like_tracker_rate_limit("Too many requests"))
+        self.assertFalse(settings_page._looks_like_tracker_rate_limit("Invalid API key"))
 
     def test_qbittorrent_base_url_keeps_reverse_proxy_path(self):
         old_value = settings.qbt_host
