@@ -6,22 +6,91 @@ from fastapi.responses import HTMLResponse, FileResponse, JSONResponse, Streamin
 from app.templates_config import templates
 from app.services.navidrome import get_collection, refresh_collection
 from app.services.scanner import MUSIC_DIR, COVER_NAMES, AUDIO_EXTS
+from app.utils import fuzzy_match_score, fuzzy_matches
 
 router = APIRouter()
 
 
+def _collection_summary(albums: list[dict]) -> tuple[int, list[dict]]:
+    grouped: dict[str, list[dict]] = {}
+    for album in albums:
+        artist = (album.get("artist") or "Unknown Artist").strip() or "Unknown Artist"
+        grouped.setdefault(artist, []).append(album)
+
+    artist_groups = [
+        {
+            "artist": artist,
+            "albums": sorted(items, key=lambda item: (item.get("year") or "9999", item.get("album", "").lower())),
+        }
+        for artist, items in grouped.items()
+    ]
+    artist_groups.sort(key=lambda item: item["artist"].lower())
+    return len(artist_groups), artist_groups
+
+
+def _sort_albums(albums: list[dict], sort: str) -> list[dict]:
+    if sort == "artist":
+        return sorted(albums, key=lambda a: (a.get("artist", "").lower(), a.get("year") or "9999", a.get("album", "").lower()))
+    if sort == "year_desc":
+        return sorted(albums, key=lambda a: (a.get("year") or "0000", a.get("artist", "").lower(), a.get("album", "").lower()), reverse=True)
+    if sort == "year_asc":
+        return sorted(albums, key=lambda a: (a.get("year") or "9999", a.get("artist", "").lower(), a.get("album", "").lower()))
+    if sort == "recent":
+        return sorted(albums, key=lambda a: a.get("added_at", 0), reverse=True)
+    return sorted(albums, key=lambda a: (a.get("album", "").lower(), a.get("artist", "").lower()))
+
+
+def _album_matches_query(album: dict, query: str) -> bool:
+    artist = album.get("artist", "")
+    title = album.get("album", "")
+    return fuzzy_matches(query, artist, title, f"{artist} {title}")
+
+
+def _filter_albums(albums: list[dict], query: str) -> list[dict]:
+    if not query.strip():
+        return albums
+    return sorted(
+        [album for album in albums if _album_matches_query(album, query)],
+        key=lambda album: fuzzy_match_score(query, album.get("artist", ""), album.get("album", ""), f"{album.get('artist', '')} {album.get('album', '')}"),
+        reverse=True,
+    )
+
+
 @router.get("/collection", response_class=HTMLResponse)
-async def collection_page(request: Request, q: str = Query(default="")):
+async def collection_page(
+    request: Request,
+    q: str = Query(default=""),
+    sort: str = Query(default="recent"),
+    cover: str = Query(default="all"),
+):
     albums = await get_collection()
+    query_active = bool(q.strip())
     if q:
-        ql = q.lower()
-        albums = [a for a in albums if ql in a["artist"].lower() or ql in a["album"].lower()]
+        albums = _filter_albums(albums, q)
+
+    if cover == "with":
+        albums = [a for a in albums if a.get("cover_url")]
+    elif cover == "missing":
+        albums = [a for a in albums if not a.get("cover_url")]
+
+    if sort not in {"recent", "artist", "album", "year_desc", "year_asc"}:
+        sort = "recent"
+    if cover not in {"all", "with", "missing"}:
+        cover = "all"
+
+    if not (query_active and sort == "recent"):
+        albums = _sort_albums(albums, sort)
+    artist_total, artist_groups = _collection_summary(albums)
 
     return templates.TemplateResponse("collection.html", {
         "request": request,
         "albums": albums,
+        "artist_groups": artist_groups,
         "query": q,
+        "sort": sort,
+        "cover": cover,
         "total": len(albums),
+        "artist_total": artist_total,
     })
 
 
@@ -128,7 +197,19 @@ async def cover_lastfm(artist: str = Query(...), album: str = Query(...)):
 @router.post("/api/collection/refresh", response_class=HTMLResponse)
 async def do_refresh(request: Request):
     albums = await refresh_collection()
+    artist_total, _ = _collection_summary(albums)
     return templates.TemplateResponse("partials/collection_stats.html", {
         "request": request,
         "total": len(albums),
+        "artist_total": artist_total,
+    })
+
+
+@router.get("/api/collection/counts")
+async def collection_counts(refresh: int = Query(default=0)):
+    albums = await refresh_collection() if refresh else await get_collection()
+    artist_total, _ = _collection_summary(albums)
+    return JSONResponse({
+        "albums": len(albums),
+        "artists": artist_total,
     })

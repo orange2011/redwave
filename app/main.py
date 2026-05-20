@@ -8,7 +8,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from app.config import settings
 from app.database import init_db
 from app.models import cache as _cache_model  # noqa: F401 — registers AlbumCache table
-from app.routers import home, search, album, artist, collection, debug, auth
+from app.routers import home, search, album, artist, collection, discover, debug, auth
 from app.routers.api import torrents, youtube, navidrome as navidrome_api
 from app.routers import settings_page
 from app.tasks.status_poller import poll_active_downloads
@@ -45,6 +45,7 @@ app.add_middleware(SessionMiddleware, secret_key=settings.secret_key)
 app.include_router(auth.router)
 app.include_router(home.router)
 app.include_router(search.router)
+app.include_router(discover.router)
 app.include_router(album.router)
 app.include_router(artist.router)
 app.include_router(collection.router)

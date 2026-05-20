@@ -8,6 +8,7 @@ from app.services.lastfm import lastfm_client
 from app.services.listenbrainz import lb_client
 from app.services.navidrome import get_collection, get_newest_albums
 from app.services.red import get_top_albums as red_top_albums
+from app.utils import build_collection_lookup, find_collection_album
 
 router = APIRouter()
 
@@ -92,22 +93,36 @@ async def home(request: Request):
         get_newest_albums(limit=12),
     )
 
-    # Collection lookup set for badge display
-    from app.utils import normalize_album, normalize_artist
-    import unicodedata
-    def _nfc(s): return unicodedata.normalize("NFC", s)
-    collection_keys = {
-        f"{normalize_artist(_nfc(a['artist']))}|{_nfc(normalize_album(a['album'])).lower()}"
-        for a in collection
-    }
+    collection_lookup = build_collection_lookup(collection)
+
+    def _mark_album(album: dict, *, owned: bool = False) -> dict:
+        year = album.get("year") or album.get("release_year") or ""
+        match = find_collection_album(
+            album.get("artist", ""),
+            album.get("album", ""),
+            lookup=collection_lookup,
+            year=year,
+            mb_id=album.get("mb_id", "") or album.get("album_mbid", ""),
+            cover_url=album.get("cover_url", ""),
+        )
+        return {**album, "in_collection": owned or bool(match)}
+
+    def _mark_list(albums: list[dict]) -> list[dict]:
+        return [_mark_album(album) for album in albums or []]
+
+    marked_playlists = []
+    for playlist in _lb_cache["data"] or []:
+        marked_playlists.append({
+            **playlist,
+            "albums": _mark_list(playlist.get("albums", [])),
+        })
 
     return templates.TemplateResponse("home.html", {
         "request": request,
-        "lastfm_albums": _top_cache["data"],
-        "recommendations": _rec_cache["data"],
-        "lb_playlists": _lb_cache["data"],
+        "lastfm_albums": _mark_list(_top_cache["data"]),
+        "recommendations": _mark_list(_rec_cache["data"]),
+        "lb_playlists": marked_playlists,
         "rec_week": week_key,
-        "recently_added": recently_added,
-        "red_top": _red_cache["data"],
-        "collection_keys": collection_keys,
+        "recently_added": [_mark_album(album, owned=True) for album in recently_added],
+        "red_top": _mark_list(_red_cache["data"]),
     })

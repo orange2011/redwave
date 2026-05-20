@@ -4,6 +4,11 @@
      hx-on::load="setTimeout(() => document.getElementById('grab-toast').remove(), 4000)">
   {% if album_request.status == "downloading" %}
   ✓ Sent to qBittorrent — {{ artist }} · {{ album }}
+  {% if cross_seed_status == "queued" %}
+  <div class="text-xs opacity-90 mt-1">OPS cross-seed will be added after the RED torrent completes.</div>
+  {% elif cross_seed_status == "no_match" %}
+  <div class="text-xs opacity-90 mt-1">No exact-size OPS cross-seed match was found.</div>
+  {% endif %}
   {% else %}
   ✗ Failed to send to qBittorrent
   {% endif %}

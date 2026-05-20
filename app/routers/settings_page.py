@@ -30,6 +30,18 @@ def _reload_settings(data: dict[str, str]):
     """Apply saved values to the live settings object."""
     mapping = {
         "RED_API_KEY": "red_api_key",
+        "RED_USE_FREELEECH_TOKEN": "red_use_freeleech_token",
+        "RED_QUALITY_PROFILE": "red_quality_profile",
+        "RED_MEDIA_PREFERENCE": "red_media_preference",
+        "RED_MEDIA_SCORE_CD": "red_media_score_cd",
+        "RED_MEDIA_SCORE_WEB": "red_media_score_web",
+        "RED_MEDIA_SCORE_VINYL": "red_media_score_vinyl",
+        "RED_MEDIA_SCORE_CASSETTE": "red_media_score_cassette",
+        "RED_MEDIA_SCORE_SACD": "red_media_score_sacd",
+        "RED_MEDIA_SCORE_BLU_RAY": "red_media_score_blu_ray",
+        "RED_MEDIA_SCORE_DVD": "red_media_score_dvd",
+        "RED_MEDIA_SCORE_SOUNDBOARD": "red_media_score_soundboard",
+        "OPS_API_KEY": "ops_api_key",
         "LASTFM_API_KEY": "lastfm_api_key",
         "LASTFM_SHARED_SECRET": "lastfm_shared_secret",
         "LASTFM_SESSION_KEY": "lastfm_session_key",
@@ -41,12 +53,14 @@ def _reload_settings(data: dict[str, str]):
         "QBT_USERNAME": "qbt_username",
         "QBT_PASSWORD": "qbt_password",
         "QBT_CATEGORY": "qbt_category",
+        "QBT_RED_TAG": "qbt_red_tag",
+        "QBT_OPS_TAG": "qbt_ops_tag",
+        "OPS_CROSS_SEED": "ops_cross_seed",
         "MUSIC_DIR": "music_dir",
         "NAVIDROME_URL": "navidrome_url",
         "NAVIDROME_USER": "navidrome_user",
         "NAVIDROME_PASS": "navidrome_pass",
-        "LIDARR_URL": "lidarr_url",
-        "LIDARR_API_KEY": "lidarr_api_key",
+        "APP_THEME": "app_theme",
     }
     for env_key, attr in mapping.items():
         if env_key in data:
@@ -56,9 +70,20 @@ def _reload_settings(data: dict[str, str]):
 @router.get("/settings", response_class=HTMLResponse)
 async def settings_page(request: Request):
     env = _read_env()
+    env.setdefault("RED_QUALITY_PROFILE", settings.red_quality_profile)
+    env.setdefault("RED_USE_FREELEECH_TOKEN", settings.red_use_freeleech_token)
+    env.setdefault("APP_THEME", settings.app_theme)
+    env.setdefault("QBT_RED_TAG", settings.qbt_red_tag)
+    env.setdefault("QBT_OPS_TAG", settings.qbt_ops_tag)
+    env.setdefault("OPS_CROSS_SEED", settings.ops_cross_seed)
+    from app.services.redacted import media_score_options
+    media_scores = media_score_options()
+    for item in media_scores:
+        env.setdefault(item["env_key"], str(getattr(settings, item["attr"], item["default"])))
     return templates.TemplateResponse("settings.html", {
         "request": request,
         "env": env,
+        "media_scores": media_scores,
         "saved": request.query_params.get("saved"),
         "lastfm_connected": request.query_params.get("lastfm_connected"),
         "lastfm_error": request.query_params.get("lastfm_error"),
@@ -70,15 +95,35 @@ async def save_settings(request: Request):
     form = await request.form()
     env = _read_env()
     fields = [
-        "RED_API_KEY", "LASTFM_API_KEY", "LASTFM_SHARED_SECRET", "LASTFM_USERNAME",
+        "RED_API_KEY", "RED_USE_FREELEECH_TOKEN", "RED_QUALITY_PROFILE",
+        "OPS_API_KEY",
+        "RED_MEDIA_SCORE_CD", "RED_MEDIA_SCORE_WEB", "RED_MEDIA_SCORE_VINYL", "RED_MEDIA_SCORE_CASSETTE",
+        "RED_MEDIA_SCORE_SACD", "RED_MEDIA_SCORE_BLU_RAY", "RED_MEDIA_SCORE_DVD", "RED_MEDIA_SCORE_SOUNDBOARD",
+        "LASTFM_API_KEY", "LASTFM_SHARED_SECRET", "LASTFM_USERNAME",
         "NAVIDROME_URL", "NAVIDROME_USER", "NAVIDROME_PASS",
         "LISTENBRAINZ_TOKEN", "DISCOGS_TOKEN",
         "QBT_HOST", "QBT_USERNAME", "QBT_PASSWORD", "QBT_CATEGORY",
-        "MUSIC_DIR", "LIDARR_URL", "LIDARR_API_KEY",
+        "QBT_RED_TAG", "QBT_OPS_TAG", "OPS_CROSS_SEED",
+        "MUSIC_DIR",
         "LISTENBRAINZ_USERNAME",
+        "APP_THEME",
     ]
+    for removed in ("LIDARR_URL", "LIDARR_API_KEY"):
+        env.pop(removed, None)
     for f in fields:
         val = form.get(f, "").strip()
+        if f == "APP_THEME" and val not in {"redwave", "black", "light"}:
+            val = "redwave"
+        if f == "RED_QUALITY_PROFILE":
+            from app.services.redacted import normalize_quality_profile
+            val = normalize_quality_profile(val)
+        if f == "OPS_CROSS_SEED" and val not in {"0", "1"}:
+            val = "0"
+        if f.startswith("RED_MEDIA_SCORE_"):
+            try:
+                val = str(max(-100000, min(100000, int(val or "0"))))
+            except ValueError:
+                val = "0"
         if val:
             env[f] = val
         elif f in env and not val:
@@ -159,6 +204,24 @@ async def test_red():
         return JSONResponse({"ok": False, "msg": str(e)})
 
 
+@router.get("/api/settings/test/ops")
+async def test_ops():
+    import httpx
+    try:
+        r = httpx.get("https://orpheus.network/ajax.php", params={"action": "index"},
+                      headers={"Authorization": settings.ops_api_key},
+                      timeout=10, follow_redirects=False)
+        if r.status_code in (301, 302, 303, 307, 308):
+            return JSONResponse({"ok": False, "msg": "Invalid or expired API key (redirect)"})
+        data = r.json()
+        if data.get("status") == "success":
+            u = data.get("response", {}).get("username", "")
+            return JSONResponse({"ok": True, "msg": f"Connected as {u}"} if u else {"ok": True, "msg": "Connected"})
+        return JSONResponse({"ok": False, "msg": data.get("error", "Unknown error")})
+    except Exception as e:
+        return JSONResponse({"ok": False, "msg": str(e)})
+
+
 @router.get("/api/settings/test/listenbrainz")
 async def test_listenbrainz():
     import httpx
@@ -219,25 +282,6 @@ async def debug_red_top():
         return r.json()
     except Exception as e:
         return {"error": str(e)}
-
-
-@router.get("/api/settings/test/lidarr")
-async def test_lidarr():
-    import httpx
-    url = settings.lidarr_url.rstrip("/")
-    if not url:
-        return JSONResponse({"ok": False, "msg": "No Lidarr URL configured"})
-    try:
-        async with httpx.AsyncClient(timeout=8) as client:
-            r = await client.get(f"{url}/api/v1/system/status",
-                                 headers={"X-Api-Key": settings.lidarr_api_key})
-            data = r.json()
-            version = data.get("version", "")
-            if version:
-                return JSONResponse({"ok": True, "msg": f"Connected — Lidarr v{version}"})
-            return JSONResponse({"ok": False, "msg": "Invalid API key"})
-    except Exception as e:
-        return JSONResponse({"ok": False, "msg": str(e)})
 
 
 @router.get("/api/settings/test/navidrome")

@@ -1,5 +1,9 @@
+{% set app_theme = settings.app_theme if settings.app_theme in ["redwave", "black", "light"] else "redwave" %}
+{% set current_path = request.url.path if request is defined else "/" %}
+{% set collection_active = current_path.startswith('/collection') or current_path.startswith('/artist') or current_path.startswith('/album') %}
+{% set discover_active = current_path.startswith('/discover') %}
 <!DOCTYPE html>
-<html lang="en" class="dark">
+<html lang="en" class="{{ 'light' if app_theme == 'light' else 'dark' }} theme-{{ app_theme }}">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -10,13 +14,13 @@
       theme: {
         extend: {
           colors: {
-            surface: '#0f0f17',
-            card: '#16161f',
-            cardHover: '#1e1e2e',
-            accent: '#c0392b',
-            accentHover: '#e74c3c',
-            muted: '#6b7280',
-            border: '#2a2a3a',
+            surface: 'var(--surface)',
+            card: 'var(--card)',
+            cardHover: 'var(--card-hover)',
+            accent: 'var(--accent)',
+            accentHover: 'var(--accent-hover)',
+            muted: 'var(--muted)',
+            border: 'var(--border)',
           }
         }
       }
@@ -25,22 +29,266 @@
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="/static/js/htmx.min.js"></script>
   <style>
+    .theme-redwave {
+      --page-bg: #0f0f17;
+      --page-image: url('/static/bg.jpg');
+      --page-bg-size: cover;
+      --page-bg-repeat: no-repeat;
+      --page-bg-position: center;
+      --body-bg: rgba(15,15,23,0.45);
+      --page-tint: linear-gradient(180deg, rgba(8,9,14,0.32), rgba(8,9,14,0.68));
+      --nav-bg: rgba(15,15,23,0.75);
+      --surface: #0f0f17;
+      --card: #16161f;
+      --card-hover: #1e1e2e;
+      --panel: rgba(10,10,18,0.75);
+      --panel-soft: rgba(14,14,22,0.72);
+      --panel-strong: rgba(22,22,31,0.88);
+      --panel-hover: rgba(30,30,46,0.94);
+      --cover-bg: #2a2a3a;
+      --text: #f9fafb;
+      --text-soft: #d1d5db;
+      --muted: #9ca3af;
+      --subtle: #6b7280;
+      --border: #2a2a3a;
+      --border-soft: rgba(255,255,255,0.07);
+      --accent: #c0392b;
+      --accent-hover: #e74c3c;
+      --purple: #a238ff;
+      --input-bg: rgba(255,255,255,0.96);
+      --input-text: #111827;
+      --input-border: #d1d5db;
+      --input-placeholder: #9ca3af;
+      --skeleton-shine: rgba(255,255,255,0.18);
+      --art-backdrop-filter: blur(80px) brightness(0.25) saturate(1.4);
+      color-scheme: dark;
+    }
+    .theme-black {
+      --page-bg: #202326;
+      --page-image: url('https://redacted.sh/static/styles/assets/backgrounds/Dark-down.svg');
+      --page-bg-size: 220px 255px;
+      --page-bg-repeat: repeat;
+      --page-bg-position: top left;
+      --body-bg: rgba(8,9,10,0.05);
+      --page-tint: linear-gradient(180deg, rgba(22,24,26,0.14), rgba(10,12,14,0.36));
+      --nav-bg: rgba(18,20,22,0.91);
+      --surface: #171a1c;
+      --card: #1c2022;
+      --card-hover: #252a2d;
+      --panel: rgba(20,23,25,0.76);
+      --panel-soft: rgba(20,23,25,0.68);
+      --panel-strong: rgba(23,26,29,0.86);
+      --panel-hover: rgba(31,35,38,0.93);
+      --cover-bg: #30343a;
+      --text: #f8fafc;
+      --text-soft: #d6dbe4;
+      --muted: #9aa4b2;
+      --subtle: #697386;
+      --border: #34393e;
+      --border-soft: rgba(255,255,255,0.1);
+      --accent: #d04536;
+      --accent-hover: #f05a49;
+      --purple: #a855f7;
+      --input-bg: rgba(255,255,255,0.08);
+      --input-text: #f8fafc;
+      --input-border: rgba(255,255,255,0.13);
+      --input-placeholder: #8993a2;
+      --skeleton-shine: rgba(255,255,255,0.12);
+      --art-backdrop-filter: blur(80px) brightness(0.18) saturate(1.2);
+      color-scheme: dark;
+    }
+    .theme-light {
+      --page-bg: #eef1f4;
+      --page-image: url('https://redacted.sh/static/styles/assets/backgrounds/Light-down.svg');
+      --page-bg-size: 220px 255px;
+      --page-bg-repeat: repeat;
+      --page-bg-position: top left;
+      --body-bg: rgba(255,255,255,0.42);
+      --page-tint: linear-gradient(180deg, rgba(255,255,255,0.58), rgba(237,241,246,0.76));
+      --nav-bg: rgba(255,255,255,0.9);
+      --surface: #edf1f6;
+      --card: #ffffff;
+      --card-hover: #f4f6f9;
+      --panel: rgba(255,255,255,0.88);
+      --panel-soft: rgba(255,255,255,0.76);
+      --panel-strong: rgba(255,255,255,0.95);
+      --panel-hover: rgba(248,250,252,0.98);
+      --cover-bg: #e2e7ef;
+      --text: #15191f;
+      --text-soft: #283342;
+      --muted: #586373;
+      --subtle: #7a8494;
+      --border: #cfd7e3;
+      --border-soft: rgba(24,32,43,0.12);
+      --accent: #bf362d;
+      --accent-hover: #d6493f;
+      --purple: #7a2fe3;
+      --input-bg: #ffffff;
+      --input-text: #111827;
+      --input-border: #cbd5e1;
+      --input-placeholder: #8a94a5;
+      --skeleton-shine: rgba(255,255,255,0.72);
+      --art-backdrop-filter: blur(80px) brightness(1.12) saturate(0.85);
+      color-scheme: light;
+    }
     html {
-      background-color: #0f0f17;
-      background-image: url('/static/bg.jpg');
-      background-size: cover;
-      background-position: center;
+      background-color: var(--page-bg);
+      background-image: var(--page-image);
+      background-size: var(--page-bg-size);
+      background-repeat: var(--page-bg-repeat);
+      background-position: var(--page-bg-position);
       background-attachment: fixed;
     }
     body {
-      background-color: rgba(15,15,23,0.45);
+      color: var(--text);
+      background-color: var(--body-bg);
     }
+    .app-nav {
+      z-index: 1000;
+      background: var(--nav-bg);
+      border-color: var(--border);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+    }
+    .nav-link {
+      color: var(--muted);
+      font-size: 0.875rem;
+      transition: color .16s, background .16s;
+    }
+    .nav-link:hover,
+    .nav-link.active {
+      color: var(--text);
+    }
+    .nav-link.active {
+      font-weight: 750;
+    }
+    input[type="text"],
+    input[type="password"],
+    input[type="number"],
+    select {
+      background: var(--input-bg) !important;
+      color: var(--input-text) !important;
+      border-color: var(--input-border) !important;
+    }
+    input::placeholder {
+      color: var(--input-placeholder) !important;
+    }
+    option,
+    optgroup {
+      background: var(--input-bg);
+      color: var(--input-text);
+    }
+    .theme-redwave option,
+    .theme-redwave optgroup,
+    .theme-black option,
+    .theme-black optgroup {
+      background: #16161f;
+      color: #f8fafc;
+    }
+    .theme-light option,
+    .theme-light optgroup {
+      background: #ffffff;
+      color: #111827;
+    }
+    @keyframes skeleton-shimmer {
+      100% {
+        transform: translateX(100%);
+      }
+    }
+    .skeleton-surface {
+      position: relative;
+      overflow: hidden;
+      background: var(--cover-bg);
+    }
+    .skeleton-surface::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      transform: translateX(-100%);
+      background: linear-gradient(90deg, transparent, var(--skeleton-shine), transparent);
+      animation: skeleton-shimmer 1.25s ease-in-out infinite;
+      pointer-events: none;
+      z-index: 1;
+    }
+    .skeleton-surface img {
+      position: relative;
+      z-index: 0;
+    }
+    .skeleton-surface.is-loaded::after,
+    .skeleton-surface.has-error::after {
+      display: none;
+    }
+    .skeleton-surface.has-error {
+      color: var(--subtle);
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .skeleton-surface::after {
+        animation: none;
+        transform: none;
+        opacity: .25;
+      }
+    }
+    .theme-light .text-white,
+    .theme-light .text-gray-100,
+    .theme-light .text-gray-200 {
+      color: var(--text) !important;
+    }
+    .theme-light .text-gray-300,
+    .theme-light .text-gray-400,
+    .theme-light .text-muted {
+      color: var(--muted) !important;
+    }
+    .theme-light .text-gray-500,
+    .theme-light .text-gray-600 {
+      color: var(--subtle) !important;
+    }
+    .theme-light .bg-card { background-color: var(--card) !important; }
+    .theme-light .bg-cardHover { background-color: var(--card-hover) !important; }
+    .theme-light .bg-surface { background-color: var(--surface) !important; }
+    .theme-light .bg-border { background-color: var(--cover-bg) !important; }
+    .theme-light .border-border { border-color: var(--border) !important; }
     .htmx-indicator { display: none; }
     .htmx-request .htmx-indicator { display: inline-block; }
     .htmx-request.htmx-indicator { display: inline-block; }
     ::-webkit-scrollbar { width: 6px; }
-    ::-webkit-scrollbar-track { background: #0f0f17; }
-    ::-webkit-scrollbar-thumb { background: #2a2a3a; border-radius: 3px; }
+    ::-webkit-scrollbar-track { background: var(--surface); }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+    .toast-stack {
+      position: fixed;
+      right: 1rem;
+      bottom: 1rem;
+      z-index: 3000;
+      display: grid;
+      gap: 0.55rem;
+      width: min(22rem, calc(100vw - 2rem));
+      pointer-events: none;
+    }
+    .toast {
+      pointer-events: auto;
+      border: 1px solid var(--border-soft);
+      border-radius: 10px;
+      background: var(--panel-strong);
+      color: var(--text);
+      box-shadow: 0 18px 48px rgba(0,0,0,0.38);
+      padding: 0.72rem 0.85rem;
+      font-size: 0.82rem;
+      line-height: 1.35;
+      opacity: 0;
+      transform: translateY(10px);
+      transition: opacity .18s ease, transform .18s ease;
+      backdrop-filter: blur(18px);
+      -webkit-backdrop-filter: blur(18px);
+    }
+    .toast.is-visible {
+      opacity: 1;
+      transform: translateY(0);
+    }
+    .toast[data-tone="success"] {
+      border-color: rgba(34,197,94,0.35);
+    }
+    .toast[data-tone="error"] {
+      border-color: rgba(248,113,113,0.45);
+    }
   </style>
   {% block head %}{% endblock %}
 </head>
@@ -57,31 +305,31 @@
   </div>
 
   <!-- Navbar -->
-  <nav class="fixed top-0 left-0 right-0 border-b border-border" style="z-index:1000; background:rgba(15,15,23,0.75); backdrop-filter:blur(12px); -webkit-backdrop-filter:blur(12px);">
-    <div class="max-w-7xl mx-auto px-4 h-14 flex items-center justify-between gap-4">
-      <a href="/" class="flex items-center gap-2 flex-shrink-0">
+  <nav class="app-nav fixed top-0 left-0 right-0 border-b">
+    <div class="w-full px-4 h-14 grid grid-cols-[minmax(8rem,1fr)_auto_minmax(16rem,1fr)] items-center gap-4">
+      <a href="/" class="flex items-center gap-2 min-w-0 justify-self-start">
         <span class="text-accent font-bold text-xl">Redwave</span>
       </a>
 
       <!-- Desktop nav -->
-      <div class="hidden sm:flex items-center gap-6">
-        <a href="/" class="text-sm text-gray-400 hover:text-white transition-colors">Home</a>
-        <a href="/search" class="text-sm text-gray-400 hover:text-white transition-colors">Search</a>
-        <a href="/collection" class="text-sm text-gray-400 hover:text-white transition-colors">Collection</a>
-        <a href="/settings" class="text-sm text-gray-400 hover:text-white transition-colors">Settings</a>
-        <a href="/logout" class="text-sm text-gray-400 hover:text-white transition-colors">Logout</a>
+      <div class="hidden sm:flex items-center gap-6 justify-self-center">
+        <a href="/" class="nav-link {{ 'active' if current_path == '/' else '' }}">Home</a>
+        <a href="/search" class="nav-link {{ 'active' if current_path.startswith('/search') else '' }}">Search</a>
+        <a href="/discover" class="nav-link {{ 'active' if discover_active else '' }}">Discover</a>
+        <a href="/collection" class="nav-link {{ 'active' if collection_active else '' }}">Collection</a>
+        <a href="/settings" class="nav-link {{ 'active' if current_path.startswith('/settings') else '' }}">Settings</a>
       </div>
 
       <!-- Desktop search bar -->
-      <div class="hidden sm:flex items-center">
+      <div class="hidden sm:flex items-center justify-self-end w-full" style="max-width:330px;">
         <input type="text" name="q" placeholder="Search albums..."
-          class="bg-white border border-gray-300 rounded-lg px-3 py-1.5 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent w-48"
+          class="bg-white border border-gray-300 rounded-lg px-3 py-1.5 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent w-full"
           autocomplete="off"
           onkeydown="if(event.key==='Enter'&&this.value.trim())window.location.href='/search?q='+encodeURIComponent(this.value.trim())">
       </div>
 
       <!-- Mobile hamburger -->
-      <button class="sm:hidden flex flex-col gap-1.5 p-2" onclick="document.getElementById('mobile-menu').classList.toggle('hidden')" aria-label="Menu">
+      <button class="sm:hidden flex flex-col gap-1.5 p-2 justify-self-end col-start-3" onclick="document.getElementById('mobile-menu').classList.toggle('hidden')" aria-label="Menu">
         <span class="block w-5 h-0.5 bg-gray-300"></span>
         <span class="block w-5 h-0.5 bg-gray-300"></span>
         <span class="block w-5 h-0.5 bg-gray-300"></span>
@@ -89,27 +337,86 @@
     </div>
 
     <!-- Mobile menu -->
-    <div id="mobile-menu" class="hidden sm:hidden border-t border-border px-4 py-3 space-y-3" style="background:rgba(15,15,23,0.95);">
+    <div id="mobile-menu" class="hidden sm:hidden border-t border-border px-4 py-3 space-y-3" style="background:var(--nav-bg);">
       <input type="text" name="q" placeholder="Search albums..."
         class="w-full bg-white border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:border-accent"
         autocomplete="off"
         onkeydown="if(event.key==='Enter'&&this.value.trim()){window.location.href='/search?q='+encodeURIComponent(this.value.trim());document.getElementById('mobile-menu').classList.add('hidden');}">
       <div class="flex flex-col gap-3 pb-1">
-        <a href="/" class="text-sm text-gray-300 hover:text-white transition-colors">Home</a>
-        <a href="/search" class="text-sm text-gray-300 hover:text-white transition-colors">Search</a>
-        <a href="/collection" class="text-sm text-gray-300 hover:text-white transition-colors">Collection</a>
-        <a href="/settings" class="text-sm text-gray-300 hover:text-white transition-colors">Settings</a>
+        <a href="/" class="nav-link {{ 'active' if current_path == '/' else '' }}">Home</a>
+        <a href="/search" class="nav-link {{ 'active' if current_path.startswith('/search') else '' }}">Search</a>
+        <a href="/discover" class="nav-link {{ 'active' if discover_active else '' }}">Discover</a>
+        <a href="/collection" class="nav-link {{ 'active' if collection_active else '' }}">Collection</a>
+        <a href="/settings" class="nav-link {{ 'active' if current_path.startswith('/settings') else '' }}">Settings</a>
       </div>
     </div>
   </nav>
 
   <!-- Main content -->
-  <main class="max-w-7xl mx-auto px-4 pt-20 pb-12">
+  <main class="{% block main_class %}max-w-7xl mx-auto px-4 pt-20 pb-12{% endblock %}">
     {% block content %}{% endblock %}
   </main>
 
   <!-- Modal container -->
   <div id="modal-container"></div>
+  <div id="toast-stack" class="toast-stack" aria-live="polite" aria-atomic="true"></div>
+
+  <script>
+    window.showToast = function showToast(message, tone = 'info') {
+      const stack = document.getElementById('toast-stack');
+      if (!stack || !message) return;
+      const toast = document.createElement('div');
+      toast.className = 'toast';
+      toast.dataset.tone = tone;
+      toast.textContent = message;
+      stack.appendChild(toast);
+      requestAnimationFrame(() => toast.classList.add('is-visible'));
+      window.setTimeout(() => {
+        toast.classList.remove('is-visible');
+        window.setTimeout(() => toast.remove(), 220);
+      }, 3600);
+    };
+
+    function settleSkeletonImage(img) {
+      const holder = img.closest('.skeleton-surface');
+      if (!holder) return;
+      holder.classList.toggle('is-loaded', img.complete && img.naturalWidth > 0);
+    }
+
+    window.hydrateSkeletonImages = function hydrateSkeletonImages(root = document) {
+      root.querySelectorAll?.('.skeleton-surface img').forEach(settleSkeletonImage);
+    };
+
+    document.addEventListener('load', (event) => {
+      if (event.target?.matches?.('.skeleton-surface img')) {
+        settleSkeletonImage(event.target);
+      }
+    }, true);
+
+    document.addEventListener('error', (event) => {
+      if (event.target?.matches?.('.skeleton-surface img')) {
+        event.target.closest('.skeleton-surface')?.classList.add('has-error');
+      }
+    }, true);
+
+    document.body.addEventListener('htmx:afterRequest', (event) => {
+      const elt = event.detail?.elt;
+      if (!elt?.dataset) return;
+      if (event.detail.successful && elt.dataset.toastSuccess) {
+        window.showToast(elt.dataset.toastSuccess, 'success');
+      } else if (event.detail.failed && elt.dataset.toastError) {
+        window.showToast(elt.dataset.toastError, 'error');
+      }
+    });
+
+    document.addEventListener('DOMContentLoaded', () => {
+      window.hydrateSkeletonImages();
+      const params = new URLSearchParams(window.location.search);
+      if (params.get('saved') === '1') {
+        window.showToast('Settings saved.', 'success');
+      }
+    });
+  </script>
 
 </body>
 </html>

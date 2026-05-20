@@ -1,5 +1,204 @@
 {% extends "base.html" %}
-{% block title %}Settings — Redwave{% endblock %}
+{% block title %}Settings - Redwave{% endblock %}
+
+{% block head %}
+<style>
+  .settings-shell {
+    max-width: 1180px;
+    margin: 0 auto;
+  }
+  .settings-layout {
+    display: grid;
+    grid-template-columns: 15rem minmax(0, 1fr);
+    gap: 1.1rem;
+    align-items: start;
+  }
+  .settings-sidebar {
+    position: sticky;
+    top: 4.6rem;
+    border: 1px solid var(--border-soft);
+    border-radius: 10px;
+    background: var(--panel-soft);
+    padding: 0.65rem;
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+  }
+  .settings-sidebar-title {
+    color: var(--muted);
+    font-size: 0.68rem;
+    font-weight: 800;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    padding: 0.55rem 0.65rem 0.65rem;
+  }
+  .settings-nav-link {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    color: var(--text-soft);
+    text-decoration: none;
+    border-radius: 8px;
+    padding: 0.68rem 0.7rem;
+    font-size: 0.86rem;
+    font-weight: 750;
+    transition: background .16s, color .16s;
+  }
+  .settings-nav-link:hover {
+    color: var(--text);
+    background: var(--panel-hover);
+  }
+  .settings-nav-link span {
+    color: var(--subtle);
+    font-size: 0.75rem;
+  }
+  .settings-content {
+    display: grid;
+    gap: 1rem;
+  }
+  .settings-panel {
+    border: 1px solid var(--border-soft);
+    border-radius: 10px;
+    background: var(--panel-soft);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    overflow: hidden;
+  }
+  .settings-panel-header {
+    padding: 1rem 1.1rem;
+    border-bottom: 1px solid var(--border-soft);
+  }
+  .settings-panel-header h2 {
+    color: var(--text);
+    font-size: 1.02rem;
+    font-weight: 850;
+    margin: 0;
+  }
+  .settings-panel-header p {
+    color: var(--muted);
+    font-size: 0.78rem;
+    line-height: 1.45;
+    margin: 0.22rem 0 0;
+  }
+  .settings-panel-body {
+    display: grid;
+    gap: 0.85rem;
+    padding: 1rem 1.1rem 1.1rem;
+  }
+  .settings-row {
+    display: grid;
+    grid-template-columns: minmax(10rem, 0.42fr) minmax(0, 1fr);
+    gap: 1rem;
+    align-items: start;
+    padding-top: 0.85rem;
+    border-top: 1px solid var(--border-soft);
+  }
+  .settings-row:first-child {
+    border-top: 0;
+    padding-top: 0;
+  }
+  .settings-row-label h3 {
+    color: var(--text);
+    font-size: 0.86rem;
+    font-weight: 800;
+    margin: 0;
+  }
+  .settings-row-label p,
+  .settings-muted {
+    color: var(--muted);
+    font-size: 0.74rem;
+    line-height: 1.45;
+    margin: 0.22rem 0 0;
+  }
+  .settings-fields {
+    display: grid;
+    gap: 0.72rem;
+  }
+  .media-score-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(8rem, 1fr));
+    gap: 0.55rem;
+  }
+  .media-score-field {
+    border: 1px solid var(--border-soft);
+    border-radius: 8px;
+    background: var(--panel-strong);
+    padding: 0.58rem;
+  }
+  .media-score-field label {
+    display: block;
+    color: var(--text);
+    font-size: 0.74rem;
+    font-weight: 800;
+    margin-bottom: 0.36rem;
+  }
+  .settings-actions {
+    position: sticky;
+    bottom: 1rem;
+    border: 1px solid var(--border-soft);
+    border-radius: 10px;
+    background: var(--panel-strong);
+    padding: 0.75rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    z-index: 5;
+  }
+  .settings-link {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 2.35rem;
+    border-radius: 8px;
+    border: 1px solid var(--border-soft);
+    color: var(--text);
+    padding: 0 0.85rem;
+    font-size: 0.78rem;
+    font-weight: 750;
+    text-decoration: none;
+    transition: background .16s, border-color .16s;
+  }
+  .settings-link:hover {
+    background: var(--panel-hover);
+    border-color: var(--border);
+  }
+  @media (max-width: 900px) {
+    .settings-layout {
+      grid-template-columns: 1fr;
+    }
+    .settings-sidebar {
+      position: static;
+      display: flex;
+      overflow-x: auto;
+      gap: 0.25rem;
+    }
+    .settings-sidebar-title {
+      display: none;
+    }
+    .settings-nav-link {
+      flex: 0 0 auto;
+      white-space: nowrap;
+    }
+    .settings-nav-link span {
+      display: none;
+    }
+    .settings-row {
+      grid-template-columns: 1fr;
+      gap: 0.55rem;
+    }
+    .settings-actions {
+      align-items: stretch;
+      flex-direction: column;
+    }
+    .settings-actions button {
+      width: 100%;
+    }
+  }
+</style>
+{% endblock %}
 
 {% block content %}
 
@@ -25,10 +224,51 @@
 </div>
 {% endmacro %}
 
-<div class="max-w-2xl mx-auto">
+{% macro select_field(key, label, env, options, help="") %}
+<div>
+  <label class="block text-sm text-gray-300 mb-1">{{ label }}</label>
+  <select
+    name="{{ key }}"
+    class="w-full bg-white border border-gray-300 text-gray-900 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent">
+    {% for value, text in options %}
+    <option value="{{ value }}" {% if env.get(key, '') == value %}selected{% endif %}>{{ text }}</option>
+    {% endfor %}
+  </select>
+  {% if help %}<p class="text-xs text-gray-500 mt-1">{{ help }}</p>{% endif %}
+</div>
+{% endmacro %}
 
+{% macro checkbox_field(key, label, env, help="") %}
+<label class="flex items-start gap-3 rounded-lg border border-border px-3 py-2"
+       style="background:var(--panel-strong);">
+  <input type="checkbox" name="{{ key }}" value="1"
+         {% if env.get(key, '') in ['1', 'true', 'True', 'on', 'yes'] %}checked{% endif %}
+         class="mt-1 h-4 w-4 rounded border-gray-300 text-accent focus:ring-accent">
+  <span>
+    <span class="block text-sm font-semibold" style="color:var(--text);">{{ label }}</span>
+    {% if help %}<span class="block text-xs mt-1" style="color:var(--muted);">{{ help }}</span>{% endif %}
+  </span>
+</label>
+{% endmacro %}
+
+{% macro score_field(item, env) %}
+<div class="media-score-field">
+  <label for="{{ item.env_key }}">{{ item.label }}</label>
+  <input
+    id="{{ item.env_key }}"
+    type="number"
+    name="{{ item.env_key }}"
+    value="{{ env.get(item.env_key, item.default) }}"
+    min="-100000"
+    max="100000"
+    step="1"
+    class="w-full bg-white border border-gray-300 text-gray-900 placeholder-gray-400 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent">
+</div>
+{% endmacro %}
+
+<div class="settings-shell">
   <h1 class="text-2xl font-bold text-white mb-2">Settings</h1>
-  <p class="text-muted text-sm mb-8">Changes are saved to <code class="text-gray-300">.env</code> and applied immediately without restart.</p>
+  <p class="text-muted text-sm mb-8">Configure Redwave, RED search, metadata sources, and downloads.</p>
 
   {% if saved %}
   <div class="mb-6 px-4 py-3 rounded-lg text-sm font-medium" style="background:rgba(34,197,94,0.12); border:1px solid rgba(34,197,94,0.3); color:#22c55e;">
@@ -37,113 +277,254 @@
   {% endif %}
 
   <form method="post" action="/settings">
+    <div class="settings-layout">
+      <aside class="settings-sidebar" aria-label="Settings sections">
+        <div class="settings-sidebar-title">Settings</div>
+        <a href="#general" class="settings-nav-link">General <span>Theme</span></a>
+        <a href="#red" class="settings-nav-link">RED <span>Search</span></a>
+        <a href="#library" class="settings-nav-link">Library <span>Navidrome</span></a>
+        <a href="#metadata" class="settings-nav-link">Metadata <span>Last.fm</span></a>
+        <a href="#downloads" class="settings-nav-link">Downloads <span>qBittorrent</span></a>
+        <a href="#account" class="settings-nav-link">Account <span>Session</span></a>
+      </aside>
 
-    <!-- Last.fm -->
-    <section class="mb-8">
-      <h2 class="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-4">Last.fm</h2>
-      <div class="space-y-3">
-        {{ field("LASTFM_API_KEY", "API Key", env, password=True, test="lastfm") }}
-        {{ field("LASTFM_SHARED_SECRET", "Shared Secret", env, password=True, test="lastfm-secret") }}
-        {{ field("LASTFM_USERNAME", "Username", env) }}
+      <div class="settings-content">
+        <section id="general" class="settings-panel">
+          <div class="settings-panel-header">
+            <h2>General</h2>
+            <p>Choose the look Redwave should use across every page.</p>
+          </div>
+          <div class="settings-panel-body">
+            <div class="settings-row">
+              <div class="settings-row-label">
+                <h3>Theme</h3>
+                <p>Switch between the textured Redwave look and RED-inspired black or light modes.</p>
+              </div>
+              <div class="settings-fields">
+                {{ select_field("APP_THEME", "Theme", env, [
+                  ("redwave", "Redwave - textured background"),
+                  ("black", "Black - RED dark pattern"),
+                  ("light", "Light - RED white mode")
+                ]) }}
+              </div>
+            </div>
+          </div>
+        </section>
 
-        <!-- OAuth session -->
-        <div>
-          <label class="block text-sm text-gray-300 mb-1">Account Link</label>
-          {% if env.get("LASTFM_SESSION_KEY") %}
-            {% if lastfm_connected %}
-            <div class="mb-2 text-xs font-medium" style="color:#22c55e;">Connected as {{ lastfm_connected }}</div>
-            {% else %}
-            <div class="mb-2 text-xs font-medium" style="color:#22c55e;">Session key active</div>
-            {% endif %}
-            <button type="button"
-              onclick="fetch('/auth/lastfm/disconnect',{method:'POST'}).then(()=>location.reload())"
-              class="px-3 py-2 text-xs font-medium rounded-lg border border-border text-gray-300 hover:text-white hover:border-gray-500 transition-colors">
-              Disconnect
-            </button>
-          {% else %}
-            {% if lastfm_error %}
-            <div class="mb-2 text-xs" style="color:#f87171;">Connection failed: {{ lastfm_error }}</div>
-            {% endif %}
-            <a href="/auth/lastfm"
-              class="inline-block px-4 py-2 text-xs font-semibold rounded-lg text-white transition-colors"
-              style="background:#d51007;">
-              Connect Last.fm Account
-            </a>
-            <p class="text-xs text-gray-500 mt-1">Required for personalised recommendations.</p>
-          {% endif %}
+        <section id="red" class="settings-panel">
+          <div class="settings-panel-header">
+            <h2>RED</h2>
+            <p>Control RED lookups, torrent quality filtering, and freeleech token behavior.</p>
+          </div>
+          <div class="settings-panel-body">
+            <div class="settings-row">
+              <div class="settings-row-label">
+                <h3>Connection</h3>
+                <p>Used for RED searches, torrent metadata, and torrent downloads.</p>
+              </div>
+              <div class="settings-fields">
+                {{ field("RED_API_KEY", "API Key", env, password=True, test="red") }}
+              </div>
+            </div>
+            <div class="settings-row">
+              <div class="settings-row-label">
+                <h3>OPS Fallback</h3>
+                <p>Used only when RED has no matching release. The same quality and media ranking is applied.</p>
+              </div>
+              <div class="settings-fields">
+                {{ field("OPS_API_KEY", "OPS API Key", env, password=True, test="ops") }}
+              </div>
+            </div>
+            <div class="settings-row">
+              <div class="settings-row-label">
+                <h3>Search Preferences</h3>
+                <p>These preferences rank RED results. They do not hide other torrents.</p>
+              </div>
+              <div class="settings-fields">
+                {{ select_field("RED_QUALITY_PROFILE", "Preferred Quality", env, [
+                  ("any", "Any quality"),
+                  ("flac_any", "FLAC - any lossless"),
+                  ("flac_lossless", "FLAC - Lossless"),
+                  ("flac_24bit", "FLAC - 24bit Lossless"),
+                  ("mp3_any", "MP3 - any bitrate"),
+                  ("mp3_v0", "MP3 - V0 (VBR)"),
+                  ("mp3_320", "MP3 - 320"),
+                  ("mp3_v2", "MP3 - V2 (VBR)")
+                ], "Preferred results float to the top; lower-ranked formats still appear.") }}
+                <div>
+                  <label class="block text-sm text-gray-300 mb-1">Media Scores</label>
+                  <div class="media-score-grid">
+                    {% for item in media_scores %}
+                    {{ score_field(item, env) }}
+                    {% endfor %}
+                  </div>
+                  <p class="text-xs text-gray-500 mt-2">
+                    Higher numbers move that media up. Negative numbers bury it. Set Vinyl to 500 if you want vinyl rips to win.
+                  </p>
+                </div>
+                {{ select_field("RED_USE_FREELEECH_TOKEN", "Use Freeleech Tokens", env, [
+                  ("never", "Never - do not use tokens"),
+                  ("preferred", "Preferred - use a token when possible"),
+                  ("required", "Required - hide/abort torrents that cannot use a token")
+                ], "Existing freeleech torrents never spend a token.") }}
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section id="library" class="settings-panel">
+          <div class="settings-panel-header">
+            <h2>Library</h2>
+            <p>Connect Redwave to your local music library and cover-art fallback path.</p>
+          </div>
+          <div class="settings-panel-body">
+            <div class="settings-row">
+              <div class="settings-row-label">
+                <h3>Navidrome</h3>
+                <p>Used for collection counts, local matches, and search correctness.</p>
+              </div>
+              <div class="settings-fields">
+                {{ field("NAVIDROME_URL", "Server URL", env, placeholder="http://localhost:4533", test="navidrome") }}
+                {{ field("NAVIDROME_USER", "Username", env) }}
+                {{ field("NAVIDROME_PASS", "Password", env, password=True) }}
+              </div>
+            </div>
+            <div class="settings-row">
+              <div class="settings-row-label">
+                <h3>Music Folder</h3>
+                <p>Used only as a local fallback when Navidrome does not have cover art.</p>
+              </div>
+              <div class="settings-fields">
+                {{ field("MUSIC_DIR", "Music Directory", env, placeholder="W:/media/music", test="musicdir") }}
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section id="metadata" class="settings-panel">
+          <div class="settings-panel-header">
+            <h2>Metadata</h2>
+            <p>Optional services for richer artist, album, recommendation, and discovery data.</p>
+          </div>
+          <div class="settings-panel-body">
+            <div class="settings-row">
+              <div class="settings-row-label">
+                <h3>Last.fm</h3>
+                <p>Artist bios, tags, play counts, and personalised recommendations.</p>
+              </div>
+              <div class="settings-fields">
+                {{ field("LASTFM_API_KEY", "API Key", env, password=True, test="lastfm") }}
+                {{ field("LASTFM_SHARED_SECRET", "Shared Secret", env, password=True, test="lastfm-secret") }}
+                {{ field("LASTFM_USERNAME", "Username", env) }}
+                <div>
+                  <label class="block text-sm text-gray-300 mb-1">Account Link</label>
+                  {% if env.get("LASTFM_SESSION_KEY") %}
+                    {% if lastfm_connected %}
+                    <div class="mb-2 text-xs font-medium" style="color:#22c55e;">Connected as {{ lastfm_connected }}</div>
+                    {% else %}
+                    <div class="mb-2 text-xs font-medium" style="color:#22c55e;">Session key active</div>
+                    {% endif %}
+                    <button type="button"
+                      onclick="fetch('/auth/lastfm/disconnect',{method:'POST'}).then(()=>location.reload())"
+                      class="px-3 py-2 text-xs font-medium rounded-lg border border-border text-gray-300 hover:text-white hover:border-gray-500 transition-colors">
+                      Disconnect
+                    </button>
+                  {% else %}
+                    {% if lastfm_error %}
+                    <div class="mb-2 text-xs" style="color:#f87171;">Connection failed: {{ lastfm_error }}</div>
+                    {% endif %}
+                    <a href="/auth/lastfm"
+                      class="inline-block px-4 py-2 text-xs font-semibold rounded-lg text-white transition-colors"
+                      style="background:#d51007;">
+                      Connect Last.fm Account
+                    </a>
+                  {% endif %}
+                </div>
+              </div>
+            </div>
+            <div class="settings-row">
+              <div class="settings-row-label">
+                <h3>ListenBrainz</h3>
+                <p>Used as another signal for recommendations and listening history.</p>
+              </div>
+              <div class="settings-fields">
+                {{ field("LISTENBRAINZ_TOKEN", "Token", env, password=True, test="listenbrainz") }}
+                {{ field("LISTENBRAINZ_USERNAME", "Username", env, placeholder="leave blank if same as Last.fm") }}
+              </div>
+            </div>
+            <div class="settings-row">
+              <div class="settings-row-label">
+                <h3>Discogs</h3>
+                <p>Optional fallback for album art and release metadata.</p>
+              </div>
+              <div class="settings-fields">
+                {{ field("DISCOGS_TOKEN", "Token", env, password=True, test="discogs") }}
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section id="downloads" class="settings-panel">
+          <div class="settings-panel-header">
+            <h2>Downloads</h2>
+            <p>Send grabbed torrent files to qBittorrent.</p>
+          </div>
+          <div class="settings-panel-body">
+            <div class="settings-row">
+              <div class="settings-row-label">
+                <h3>qBittorrent</h3>
+                <p>Used after you choose a RED torrent and press Grab.</p>
+              </div>
+              <div class="settings-fields">
+                {{ field("QBT_HOST", "Host URL", env, placeholder="http://localhost:8080", test="qbittorrent") }}
+                {{ field("QBT_USERNAME", "Username", env) }}
+                {{ field("QBT_PASSWORD", "Password", env, password=True) }}
+                {{ field("QBT_CATEGORY", "Torrent Category", env, placeholder="music") }}
+                {{ field("QBT_RED_TAG", "RED Tag", env, placeholder="RED") }}
+                {{ field("QBT_OPS_TAG", "OPS Tag", env, placeholder="OPS") }}
+                {{ checkbox_field("OPS_CROSS_SEED", "Add OPS cross-seed after RED completes", env, "When a grabbed RED torrent finishes, Redwave looks for an exact-size OPS match and adds it to qBittorrent with the OPS tag.") }}
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section id="account" class="settings-panel">
+          <div class="settings-panel-header">
+            <h2>Account</h2>
+            <p>Session actions and tools that are useful when something feels wrong.</p>
+          </div>
+          <div class="settings-panel-body">
+            <div class="settings-row">
+              <div class="settings-row-label">
+                <h3>Session</h3>
+                <p>Log out of this local Redwave session.</p>
+              </div>
+              <div class="settings-fields">
+                <a href="/logout" class="settings-link">Log out</a>
+              </div>
+            </div>
+            <div class="settings-row">
+              <div class="settings-row-label">
+                <h3>Diagnostics</h3>
+                <p>Inspect how search normalized a query and scored each result.</p>
+              </div>
+              <div class="settings-fields">
+                <a href="/search/diagnostics" class="settings-link">Search diagnostics</a>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <div class="settings-actions">
+          <span class="settings-muted">Save applies new values immediately.</span>
+          <button type="submit"
+            class="px-6 py-2.5 rounded-lg text-sm font-semibold text-white transition-colors"
+            style="background:var(--purple);">
+            Save Settings
+          </button>
         </div>
       </div>
-    </section>
-
-    <!-- Redacted -->
-    <section class="mb-8">
-      <h2 class="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-4">Redacted (RED)</h2>
-      {{ field("RED_API_KEY", "API Key", env, password=True, test="red") }}
-    </section>
-
-    <!-- ListenBrainz -->
-    <section class="mb-8">
-      <h2 class="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-4">ListenBrainz</h2>
-      <div class="space-y-3">
-        {{ field("LISTENBRAINZ_TOKEN", "Token", env, password=True, test="listenbrainz") }}
-        {{ field("LISTENBRAINZ_USERNAME", "Username", env, placeholder="leave blank if same as Last.fm") }}
-      </div>
-    </section>
-
-    <!-- Discogs -->
-    <section class="mb-8">
-      <h2 class="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-4">Discogs</h2>
-      {{ field("DISCOGS_TOKEN", "Token", env, password=True, test="discogs") }}
-    </section>
-
-    <!-- qBittorrent -->
-    <section class="mb-8">
-      <h2 class="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-4">qBittorrent</h2>
-      <div class="space-y-3">
-        {{ field("QBT_HOST", "Host URL", env, placeholder="http://localhost:8080", test="qbittorrent") }}
-        {{ field("QBT_USERNAME", "Username", env) }}
-        {{ field("QBT_PASSWORD", "Password", env, password=True) }}
-        {{ field("QBT_CATEGORY", "Torrent Category", env, placeholder="music") }}
-      </div>
-    </section>
-
-    <!-- Navidrome -->
-    <section class="mb-8">
-      <h2 class="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-4">Navidrome</h2>
-      <div class="space-y-3">
-        {{ field("NAVIDROME_URL", "Server URL", env, placeholder="http://localhost:4533", test="navidrome") }}
-        {{ field("NAVIDROME_USER", "Username", env) }}
-        {{ field("NAVIDROME_PASS", "Password", env, password=True) }}
-      </div>
-      <p class="text-xs text-gray-500 mt-3">
-        To auto-scan after Lidarr imports, add a Webhook connection in Lidarr → Settings → Connect:<br>
-        <code class="text-gray-300">http://&lt;your-server&gt;:8001/api/navidrome/scan</code>
-      </p>
-    </section>
-
-    <!-- Lidarr -->
-    <section class="mb-8">
-      <h2 class="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-4">Lidarr</h2>
-      <div class="space-y-3">
-        {{ field("LIDARR_URL", "Server URL", env, placeholder="http://localhost:8686", test="lidarr") }}
-        {{ field("LIDARR_API_KEY", "API Key", env, password=True) }}
-      </div>
-      <p class="text-xs text-gray-500 mt-3">
-        When you grab a torrent, Redwave will automatically add the artist to Lidarr as unmonitored so it can import and rename the download.
-      </p>
-    </section>
-
-    <!-- Paths -->
-    <section class="mb-8">
-      <h2 class="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-4">Paths</h2>
-      {{ field("MUSIC_DIR", "Music Directory", env, placeholder="W:/media/music", test="musicdir") }}
-    </section>
-
-    <button type="submit"
-      class="px-6 py-2.5 rounded-lg text-sm font-semibold text-white transition-colors"
-      style="background:#7c3aed;">
-      Save Settings
-    </button>
+    </div>
   </form>
 </div>
 
@@ -152,7 +533,7 @@ function testApi(service, btn) {
   const row = btn.closest('.test-row');
   const status = row.querySelector('.test-status');
   btn.disabled = true;
-  btn.textContent = 'Testing…';
+  btn.textContent = 'Testing...';
   status.textContent = '';
   status.className = 'test-status text-xs mt-1';
   fetch('/api/settings/test/' + service)
@@ -161,7 +542,7 @@ function testApi(service, btn) {
       status.textContent = d.msg;
       status.classList.add(d.ok ? 'text-green-400' : 'text-red-400');
     })
-    .catch(e => {
+    .catch(() => {
       status.textContent = 'Request failed';
       status.classList.add('text-red-400');
     })

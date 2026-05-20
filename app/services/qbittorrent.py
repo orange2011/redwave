@@ -12,13 +12,15 @@ class QBittorrentClient:
             "password": settings.qbt_password,
         })
 
-    async def add_torrent(self, torrent_bytes: bytes) -> bool:
+    async def add_torrent(self, torrent_bytes: bytes, tags: list[str] | None = None) -> bool:
         await self.login()
+        data = {"category": settings.qbt_category}
+        clean_tags = [tag.strip() for tag in (tags or []) if tag and tag.strip()]
+        if clean_tags:
+            data["tags"] = ",".join(clean_tags)
         r = await self._client.post("/api/v2/torrents/add", files={
             "torrents": ("upload.torrent", torrent_bytes, "application/x-bittorrent"),
-        }, data={
-            "category": settings.qbt_category,
-        })
+        }, data=data)
         return r.text == "Ok."
 
     async def get_torrent_status(self, infohash: str) -> str | None:

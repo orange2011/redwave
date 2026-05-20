@@ -1,131 +1,96 @@
-import asyncio
-import httpx
-from fastapi import APIRouter, Request, Query
+from fastapi import APIRouter, Query, Request
 from fastapi.responses import HTMLResponse
+
+from app.services.search_service import (
+    album_score,
+    artist_score,
+    build_search_context,
+    compact_text,
+    match_text,
+    track_score,
+)
 from app.templates_config import templates
-from app.services.lastfm import lastfm_client
-from app.services.url_import import resolve_url, is_url
-from app.services.navidrome import get_collection
 
 router = APIRouter()
 
 
-def _search_collection(q: str, collection: list[dict]) -> list[dict]:
-    ql = q.lower()
-    matches = []
-    for a in collection:
-        if ql in a["artist"].lower() or ql in a["album"].lower():
-            matches.append({
-                "artist": a["artist"],
-                "album": a["album"],
-                "mb_id": a.get("mb_id", ""),
-                "cover_url": a.get("cover_url", ""),
-                "in_collection": True,
-            })
-    return matches[:8]
-
-
-async def _search_musicbrainz(q: str, limit: int = 10) -> list[dict]:
+def _fmt_count(value) -> str:
     try:
-        async with httpx.AsyncClient(timeout=8) as client:
-            r = await client.get(
-                "https://musicbrainz.org/ws/2/release-group",
-                params={"query": q, "fmt": "json", "limit": limit},
-                headers={"User-Agent": "Redwave/1.0 (redwave@localhost)"},
-            )
-            rgs = r.json().get("release-groups", [])
-            results = []
-            for rg in rgs:
-                credits = rg.get("artist-credit") or []
-                artist = credits[0].get("artist", {}).get("name", "") if credits else ""
-                album = rg.get("title", "")
-                mb_id = rg.get("id", "")
-                if artist and album:
-                    results.append({
-                        "artist": artist,
-                        "album": album,
-                        "mb_id": mb_id,
-                        "cover_url": None,
-                        "source": "mb",
-                    })
-            return results
-    except Exception:
-        return []
+        return f"{int(value):,}"
+    except (TypeError, ValueError):
+        return ""
+
+
+def _rank_rows(query: str, items: list[dict], scorer, label_key: str, subtitle_keys: tuple[str, ...]) -> list[dict]:
+    rows = []
+    for item in items:
+        title = item.get(label_key, "")
+        subtitle = " - ".join(str(item.get(key, "")) for key in subtitle_keys if item.get(key))
+        rows.append(
+            {
+                "title": title,
+                "subtitle": subtitle,
+                "source": item.get("source") or ("library" if item.get("in_collection") else ""),
+                "score": scorer(query, item),
+                "in_collection": bool(item.get("in_collection")),
+            }
+        )
+    return sorted(rows, key=lambda row: row["score"], reverse=True)
+
+
+def _top_summary(query: str, top: dict | None) -> dict | None:
+    if not top:
+        return None
+    result_type = top.get("type", "")
+    if result_type == "artist":
+        listeners = _fmt_count(top.get("listeners"))
+        return {
+            "type": "artist",
+            "title": top.get("name", ""),
+            "subtitle": f"{listeners} listeners" if listeners else "",
+            "score": artist_score(query, top),
+        }
+    if result_type == "track":
+        return {
+            "type": "song",
+            "title": top.get("track", ""),
+            "subtitle": " - ".join(v for v in [top.get("artist", ""), top.get("album", "")] if v),
+            "score": track_score(query, top),
+        }
+    return {
+        "type": "album",
+        "title": top.get("album", ""),
+        "subtitle": top.get("artist", ""),
+        "score": album_score(query, top),
+    }
 
 
 @router.get("/search", response_class=HTMLResponse)
 async def search(request: Request, q: str = Query(default="")):
-    results = []
-    artists = []
-    track_results = []
-    collection_hits = []
-
-    if q and len(q) >= 2:
-        if is_url(q):
-            info = await resolve_url(q)
-            if info and info.get("artist") and info.get("album"):
-                lfm = await lastfm_client.search_albums(
-                    f"{info['artist']} {info['album']}", limit=5
-                )
-                artist_l = info["artist"].lower()
-                album_l = info["album"].lower()
-                matched = next(
-                    (r for r in lfm if r["artist"].lower() == artist_l and r["album"].lower() == album_l),
-                    lfm[0] if lfm else None,
-                )
-                if matched:
-                    results = [{
-                        **matched,
-                        "cover_url": info["cover_url"] or matched.get("cover_url"),
-                        "deezer_id": info.get("deezer_id", ""),
-                    }]
-                else:
-                    results = [{
-                        "mb_id": info.get("mb_id", ""),
-                        "artist": info["artist"],
-                        "album": info["album"],
-                        "cover_url": info.get("cover_url"),
-                        "deezer_id": info.get("deezer_id", ""),
-                    }]
-        else:
-            # Collection hits + Last.fm albums + artists + tracks in parallel
-            collection, (lfm_results, artists, track_results) = await asyncio.gather(
-                get_collection(),
-                asyncio.gather(
-                    lastfm_client.search_albums(q, limit=20),
-                    lastfm_client.search_artists(q, limit=5),
-                    lastfm_client.search_tracks(q, limit=10),
-                ),
-            )
-            collection_hits = _search_collection(q, collection)
-
-            # Deduplicate Last.fm results against collection hits
-            col_keys = {f"{h['artist'].lower()}|{h['album'].lower()}" for h in collection_hits}
-            results = [
-                r for r in lfm_results
-                if f"{r['artist'].lower()}|{r['album'].lower()}" not in col_keys
-            ]
-
-            # If Last.fm came up short, pad with MusicBrainz
-            if len(results) < 5:
-                mb_results = await _search_musicbrainz(q, limit=10)
-                mb_keys = col_keys | {f"{r['artist'].lower()}|{r['album'].lower()}" for r in results}
-                for r in mb_results:
-                    key = f"{r['artist'].lower()}|{r['album'].lower()}"
-                    if key not in mb_keys:
-                        results.append(r)
-                        mb_keys.add(key)
-
-    ctx = {
-        "request": request,
-        "results": results,
-        "artists": artists,
-        "track_results": track_results,
-        "collection_hits": collection_hits,
-        "query": q,
-        "url_not_supported": is_url(q) and not results,
-    }
-
+    ctx = await build_search_context(request, q)
     if request.headers.get("HX-Request"):
         return templates.TemplateResponse("partials/search_results.html", ctx)
     return templates.TemplateResponse("search.html", ctx)
+
+
+@router.get("/search/diagnostics", response_class=HTMLResponse)
+async def search_diagnostics(request: Request, q: str = Query(default="")):
+    ctx = await build_search_context(request, q)
+    term = ctx.get("search_term") or q
+    diagnostics = None
+    if term.strip():
+        diagnostics = {
+            "normalized": match_text(term),
+            "compact": compact_text(term),
+            "top": _top_summary(term, ctx.get("top_result")),
+            "songs": _rank_rows(term, ctx.get("track_results", [])[:12], track_score, "track", ("artist", "album")),
+            "albums": _rank_rows(
+                term,
+                (ctx.get("collection_hits", []) + ctx.get("results", []))[:20],
+                album_score,
+                "album",
+                ("artist",),
+            ),
+            "artists": _rank_rows(term, ctx.get("artists", [])[:12], artist_score, "name", ()),
+        }
+    return templates.TemplateResponse("search_diagnostics.html", {**ctx, "diagnostics": diagnostics})

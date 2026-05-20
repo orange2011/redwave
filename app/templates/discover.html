@@ -1,0 +1,533 @@
+{% extends "base.html" %}
+{% block title %}Discover — Redwave{% endblock %}
+{% block main_class %}w-full px-4 pt-20 pb-12{% endblock %}
+
+{% block head %}
+<style>
+  .discover-shell {
+    width: 100%;
+    max-width: 1720px;
+    margin: 0 auto;
+  }
+  .discover-head {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 1rem;
+    margin-bottom: 1rem;
+  }
+  .discover-title h1 {
+    color: var(--text);
+    font-size: clamp(1.65rem, 2.2vw, 2.35rem);
+    line-height: 1;
+    font-weight: 900;
+    margin: 0;
+  }
+  .discover-title p {
+    color: var(--muted);
+    margin-top: 0.35rem;
+    font-size: 0.86rem;
+  }
+  .discover-tabs,
+  .discover-actions,
+  .genre-tabs {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.48rem;
+  }
+  .discover-tab,
+  .genre-tab {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 999px;
+    border: 1px solid var(--border-soft);
+    background: var(--panel-soft);
+    color: var(--text-soft);
+    text-decoration: none;
+    font-size: 0.78rem;
+    font-weight: 800;
+    transition: color .16s, background .16s, border-color .16s;
+  }
+  .discover-tab {
+    min-height: 2.25rem;
+    padding: 0 0.95rem;
+  }
+  .discover-actions {
+    justify-content: flex-end;
+  }
+  .discover-refresh {
+    min-height: 2.25rem;
+    border-radius: 8px;
+    border: 1px solid var(--border-soft);
+    background: var(--panel-soft);
+    color: var(--text-soft);
+    padding: 0 0.85rem;
+    font-size: 0.78rem;
+    font-weight: 800;
+    cursor: pointer;
+    transition: color .16s, background .16s, border-color .16s, opacity .16s;
+  }
+  .discover-refresh:hover {
+    color: var(--text);
+    background: var(--panel-hover);
+    border-color: var(--border);
+  }
+  .discover-refresh[disabled] {
+    cursor: wait;
+    opacity: 0.72;
+  }
+  .genre-tab {
+    min-height: 2rem;
+    padding: 0 0.78rem;
+  }
+  .discover-tab:hover,
+  .genre-tab:hover,
+  .discover-tab.active,
+  .genre-tab.active {
+    color: var(--text);
+    background: var(--panel-hover);
+    border-color: var(--border);
+  }
+  .genre-tabs {
+    margin-bottom: 1.1rem;
+  }
+  .discover-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1.32fr) minmax(20rem, 0.68fr);
+    gap: 1rem;
+    align-items: start;
+  }
+  .discover-section {
+    min-width: 0;
+  }
+  .discover-section h2 {
+    color: var(--text);
+    font-size: clamp(1.25rem, 1.7vw, 1.75rem);
+    line-height: 1.05;
+    font-weight: 900;
+    margin: 0 0 0.72rem;
+  }
+  .album-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 0.92rem;
+  }
+  .discover-album-card,
+  .gap-panel,
+  .track-panel {
+    border: 1px solid var(--border-soft);
+    background: var(--panel-soft);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+  }
+  .discover-album-card {
+    position: relative;
+    display: block;
+    min-width: 0;
+    border-radius: 8px;
+    overflow: hidden;
+    color: inherit;
+    text-decoration: none;
+    transition: transform .16s, border-color .16s, background .16s;
+  }
+  .discover-album-card:hover {
+    transform: translateY(-2px);
+    border-color: var(--border);
+    background: var(--panel-hover);
+  }
+  .discover-cover {
+    width: 100%;
+    aspect-ratio: 1 / 1;
+    background: var(--cover-bg);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--subtle);
+    font-size: 2rem;
+    overflow: hidden;
+  }
+  .discover-cover img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+  }
+  .discover-card-body {
+    padding: 0.72rem 0.72rem 0.8rem;
+  }
+  .discover-card-title,
+  .discover-card-subtitle,
+  .discover-card-meta {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .discover-card-title {
+    color: var(--text);
+    font-size: 0.88rem;
+    font-weight: 850;
+    line-height: 1.18;
+  }
+  .discover-card-subtitle {
+    color: var(--text-soft);
+    font-size: 0.78rem;
+    margin-top: 0.18rem;
+  }
+  .discover-card-meta {
+    color: var(--purple);
+    font-size: 0.72rem;
+    margin-top: 0.32rem;
+  }
+  .collection-check {
+    position: absolute;
+    top: 0.45rem;
+    right: 0.45rem;
+    z-index: 2;
+    width: 1.5rem;
+    height: 1.5rem;
+    border-radius: 999px;
+    background: #22c55e;
+    color: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.9rem;
+    font-weight: 900;
+    box-shadow: 0 8px 18px rgba(0,0,0,0.4);
+  }
+  .track-panel {
+    border-radius: 8px;
+    padding: 0.85rem;
+  }
+  .track-list {
+    display: grid;
+    gap: 0.48rem;
+  }
+  .track-row {
+    display: grid;
+    grid-template-columns: 2.6rem minmax(0, 1fr) auto;
+    gap: 0.68rem;
+    align-items: center;
+    min-height: 3.3rem;
+    border-radius: 8px;
+    border: 1px solid var(--border-soft);
+    background: var(--panel);
+    padding: 0.42rem 0.55rem;
+    color: inherit;
+    text-decoration: none;
+  }
+  .track-row:hover {
+    background: var(--panel-hover);
+    border-color: var(--border);
+  }
+  .track-thumb {
+    width: 2.6rem;
+    height: 2.6rem;
+    border-radius: 6px;
+    background: var(--cover-bg);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--subtle);
+    overflow: hidden;
+  }
+  .track-thumb img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+  .track-title {
+    color: var(--text);
+    font-size: 0.88rem;
+    font-weight: 850;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .track-meta {
+    color: var(--muted);
+    font-size: 0.75rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    margin-top: 0.12rem;
+  }
+  .track-rank {
+    color: var(--subtle);
+    font-size: 0.75rem;
+    font-weight: 800;
+  }
+  .library-tools {
+    display: grid;
+    grid-template-columns: minmax(14rem, 1fr) auto;
+    gap: 0.65rem;
+    margin: 0.5rem 0 1.05rem;
+    max-width: 42rem;
+  }
+  .library-tools input {
+    min-height: 2.45rem;
+  }
+  .library-tools button,
+  .library-tools a {
+    min-height: 2.45rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 8px;
+    font-size: 0.78rem;
+    font-weight: 800;
+  }
+  .library-tools button {
+    color: #fff;
+    background: var(--purple);
+    padding: 0 1rem;
+  }
+  .gap-summary {
+    color: var(--muted);
+    font-size: 0.83rem;
+    margin-bottom: 1rem;
+  }
+  .gap-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 30rem), 1fr));
+    gap: 1rem;
+  }
+  .gap-panel {
+    border-radius: 8px;
+    padding: 0.9rem;
+  }
+  .gap-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 0.75rem;
+    margin-bottom: 0.78rem;
+  }
+  .gap-head a {
+    color: var(--text);
+    font-size: 1rem;
+    font-weight: 900;
+    text-decoration: none;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .gap-head a:hover {
+    color: var(--accent-hover);
+  }
+  .gap-head span {
+    color: var(--muted);
+    font-size: 0.75rem;
+    flex-shrink: 0;
+  }
+  .gap-albums {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(102px, 1fr));
+    gap: 0.68rem;
+  }
+  .empty-state {
+    color: var(--muted);
+    border: 1px solid var(--border-soft);
+    background: var(--panel-soft);
+    border-radius: 8px;
+    padding: 1rem;
+  }
+  @media (max-width: 920px) {
+    .discover-head {
+      align-items: flex-start;
+      flex-direction: column;
+    }
+    .discover-layout {
+      grid-template-columns: 1fr;
+    }
+    .album-grid {
+      grid-template-columns: repeat(auto-fill, minmax(126px, 1fr));
+    }
+  }
+  @media (max-width: 560px) {
+    .library-tools {
+      grid-template-columns: 1fr;
+    }
+    .genre-tabs {
+      flex-wrap: nowrap;
+      overflow-x: auto;
+      padding-bottom: 0.25rem;
+      scrollbar-width: none;
+    }
+    .genre-tabs::-webkit-scrollbar {
+      display: none;
+    }
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+{% macro album_href(a) -%}
+/album/{{ a.mb_id if a.mb_id else '_' }}?artist={{ a.artist | urlencode }}&album={{ a.album | urlencode }}&cover={{ (a.cover_url or '') | urlencode }}{% if a.year %}&year={{ a.year | urlencode }}{% endif %}
+{%- endmacro %}
+
+{% macro album_card(a, compact=False) %}
+<a href="{{ album_href(a) }}" class="discover-album-card">
+  {% if a.in_collection %}<span class="collection-check" title="In collection">✓</span>{% endif %}
+  <div class="discover-cover{% if a.cover_url %} skeleton-surface{% else %} has-error{% endif %}">
+    {% if a.cover_url %}
+    <img src="{{ a.cover_url }}" alt="{{ a.album }}" loading="lazy" onerror="this.parentElement.classList.add('has-error'); this.parentElement.innerHTML='♪'">
+    {% else %}
+    ♪
+    {% endif %}
+  </div>
+  <div class="discover-card-body">
+    <div class="discover-card-title">{{ a.album }}</div>
+    <div class="discover-card-subtitle">{{ a.artist }}</div>
+    {% if not compact %}
+    <div class="discover-card-meta">
+      {% if a.rank %}#{{ a.rank }}{% endif %}{% if a.tag %} · {{ a.tag }}{% endif %}
+    </div>
+    {% endif %}
+  </div>
+</a>
+{% endmacro %}
+
+<div class="discover-shell">
+  <header class="discover-head">
+    <div class="discover-title">
+      <h1>Discover</h1>
+      <p>{% if mode == "genres" %}Genre charts from Last.fm, checked against your library.{% else %}Missing albums from artists already in Navidrome.{% endif %}</p>
+    </div>
+    <div class="discover-actions">
+      <nav class="discover-tabs" aria-label="Discover sections">
+        <a href="/discover/genres" class="discover-tab {{ 'active' if mode == 'genres' else '' }}">Genre Charts</a>
+        <a href="/discover/library" class="discover-tab {{ 'active' if mode == 'library' else '' }}">Library Gaps</a>
+      </nav>
+      <button type="button" id="discover-refresh" class="discover-refresh">Refresh</button>
+    </div>
+  </header>
+
+  {% if mode == "genres" %}
+  <nav class="genre-tabs" aria-label="Genres">
+    {% for genre in genres %}
+    <a href="/discover/genres?genre={{ genre | urlencode }}" class="genre-tab {{ 'active' if genre == active_genre else '' }}">{{ genre }}</a>
+    {% endfor %}
+  </nav>
+
+  <div class="discover-layout">
+    <section class="discover-section">
+      <h2>{{ active_genre | title }} Albums</h2>
+      {% if genre_albums %}
+      <div class="album-grid">
+        {% for album in genre_albums %}
+        {{ album_card(album) }}
+        {% endfor %}
+      </div>
+      {% else %}
+      <div class="empty-state">No genre albums came back yet. Check the Last.fm settings, or try another genre.</div>
+      {% endif %}
+    </section>
+
+    <aside class="discover-section track-panel">
+      <h2>{{ active_genre | title }} Tracks</h2>
+      {% if genre_tracks %}
+      <div class="track-list">
+        {% for t in genre_tracks %}
+        <a href="/search?q={{ (t.artist ~ ' ' ~ t.track) | urlencode }}" class="track-row">
+          <div class="track-thumb{% if t.cover_url %} skeleton-surface{% else %} has-error{% endif %}">
+            {% if t.cover_url %}
+            <img src="{{ t.cover_url }}" alt="{{ t.track }}" loading="lazy" onerror="this.parentElement.classList.add('has-error'); this.parentElement.innerHTML='♪'">
+            {% else %}
+            ♪
+            {% endif %}
+          </div>
+          <div>
+            <div class="track-title">{{ t.track }}</div>
+            <div class="track-meta">{{ t.artist }}</div>
+          </div>
+          <div class="track-rank">#{{ t.rank }}</div>
+        </a>
+        {% endfor %}
+      </div>
+      {% else %}
+      <div class="empty-state">No tracks came back for this genre.</div>
+      {% endif %}
+    </aside>
+  </div>
+  {% else %}
+  <form method="get" action="/discover/library" class="library-tools">
+    <input type="text" name="artist" value="{{ gap_query }}" placeholder="Filter artist gaps..."
+      class="w-full bg-white border border-gray-300 text-gray-900 placeholder-gray-400 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent">
+    <button type="submit">Find Gaps</button>
+  </form>
+
+  <p class="gap-summary">
+    Scanning {{ gap_total_artists }} artists and {{ gap_total_albums }} albums from Navidrome{% if gap_query %} matching "{{ gap_query }}"{% endif %}.
+  </p>
+
+  {% if gap_groups %}
+  <div class="gap-grid">
+    {% for group in gap_groups %}
+    <section class="gap-panel">
+      <div class="gap-head">
+        <a href="/artist/{{ group.artist | urlencode }}">{{ group.artist }}</a>
+        <span>{{ group.album_count }} owned</span>
+      </div>
+      <div class="gap-albums">
+        {% for album in group.missing %}
+        {{ album_card(album, compact=True) }}
+        {% endfor %}
+      </div>
+    </section>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="empty-state">
+    No library gaps came back. That can mean Last.fm is unavailable, the filter is too narrow, or the scanned artists already have their top albums in your library.
+  </div>
+  {% endif %}
+  {% endif %}
+</div>
+
+<script>
+  const discoverInitialSignature = "{{ collection_signature }}";
+  const discoverRefreshButton = document.getElementById('discover-refresh');
+
+  window.refreshDiscover = async function refreshDiscover({ reload = true } = {}) {
+    if (!discoverRefreshButton) return;
+    discoverRefreshButton.disabled = true;
+    discoverRefreshButton.textContent = 'Refreshing...';
+    try {
+      const response = await fetch('/discover/api/refresh', {
+        method: 'POST',
+        cache: 'no-store',
+        headers: { 'Accept': 'application/json' },
+      });
+      if (!response.ok) throw new Error('refresh failed');
+      if (reload) {
+        window.location.reload();
+      }
+    } catch (error) {
+      discoverRefreshButton.disabled = false;
+      discoverRefreshButton.textContent = 'Refresh';
+      window.showToast?.('Discover refresh failed.', 'error');
+    }
+  };
+
+  discoverRefreshButton?.addEventListener('click', () => {
+    window.refreshDiscover();
+  });
+
+  window.watchDiscoverState = async function watchDiscoverState() {
+    try {
+      const response = await fetch('/discover/api/state', { cache: 'no-store' });
+      if (!response.ok) return;
+      const state = await response.json();
+      if (state.signature && state.signature !== discoverInitialSignature) {
+        window.showToast?.('Library changed. Refreshing Discover...', 'success');
+        window.setTimeout(() => window.location.reload(), 700);
+      }
+    } catch (error) {}
+  };
+
+  setInterval(window.watchDiscoverState, 60000);
+</script>
+{% endblock %}

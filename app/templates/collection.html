@@ -1,42 +1,378 @@
 {% extends "base.html" %}
 {% block title %}Collection — Redwave{% endblock %}
+{% block main_class %}w-full px-4 pt-20 pb-12{% endblock %}
+
+{% block head %}
+<style>
+  .collection-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+    gap: 0.9rem;
+  }
+  @media (min-width: 1280px) {
+    .collection-grid {
+      grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    }
+  }
+  @media (min-width: 1800px) {
+    .collection-grid {
+      grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+    }
+  }
+  .artist-directory-panel {
+    border-radius: 8px;
+    border: 1px solid var(--border-soft);
+    background: var(--panel-soft);
+    padding: 1rem;
+  }
+  .collection-toolbar {
+    display: grid;
+    grid-template-columns: minmax(14rem, 1fr) minmax(9rem, 11rem) minmax(9rem, 11rem) auto auto;
+    gap: 0.7rem;
+    align-items: end;
+    border: 1px solid var(--border-soft);
+    border-radius: 8px;
+    background: var(--panel-soft);
+    padding: 0.85rem;
+    margin-bottom: 1.1rem;
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+  }
+  .collection-control label {
+    display: block;
+    color: var(--muted);
+    font-size: 0.68rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    margin-bottom: 0.35rem;
+  }
+  .collection-control input,
+  .collection-control select {
+    min-height: 2.35rem;
+  }
+  .collection-apply,
+  .collection-reset {
+    min-height: 2.35rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 8px;
+    font-size: 0.78rem;
+    font-weight: 750;
+    transition: color .16s, background .16s, border-color .16s;
+  }
+  .collection-apply {
+    padding: 0 1rem;
+    color: #fff;
+    background: var(--purple);
+  }
+  .collection-apply:hover {
+    filter: brightness(1.08);
+  }
+  .collection-reset {
+    padding: 0 0.85rem;
+    border: 1px solid var(--border-soft);
+    color: var(--muted);
+  }
+  .collection-reset:hover {
+    color: var(--text);
+    border-color: var(--border);
+    background: var(--panel-hover);
+  }
+  .artist-group {
+    padding: 0.85rem 0 1.05rem;
+    border-top: 1px solid var(--border-soft);
+  }
+  .artist-group:first-of-type {
+    border-top: 0;
+    padding-top: 0;
+  }
+  .artist-group-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    margin-bottom: 0.72rem;
+  }
+  .artist-name-line {
+    min-width: 0;
+  }
+  .artist-name-line a {
+    display: inline-block;
+    max-width: min(36rem, 70vw);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .artist-name-line span {
+    display: block;
+    color: var(--muted);
+    font-size: 0.74rem;
+    margin-top: 0.1rem;
+  }
+  .artist-row-controls {
+    display: flex;
+    align-items: center;
+    gap: 0.42rem;
+    flex-shrink: 0;
+  }
+  .artist-shelf-button {
+    position: relative;
+    width: 2.05rem;
+    height: 2.05rem;
+    border-radius: 999px;
+    border: 1px solid var(--border-soft);
+    background: var(--panel-soft);
+    color: var(--muted);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0;
+    line-height: 0;
+    cursor: pointer;
+    transition: color .16s, background .16s, border-color .16s;
+  }
+  .artist-shelf-button:hover {
+    color: var(--text);
+    background: var(--panel-hover);
+    border-color: var(--border);
+  }
+  .artist-shelf-button::before {
+    content: "";
+    width: 0.52rem;
+    height: 0.52rem;
+    border-top: 2px solid currentColor;
+    border-right: 2px solid currentColor;
+    transform: rotate(45deg);
+    margin-left: -0.16rem;
+  }
+  .artist-shelf-button[data-artist-scroll="-1"]::before {
+    transform: rotate(225deg);
+    margin-left: 0.16rem;
+  }
+  .artist-album-row {
+    display: grid;
+    grid-auto-flow: column;
+    grid-auto-columns: clamp(8.7rem, 12.2vw, 10.8rem);
+    gap: 0.9rem;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scroll-snap-type: x mandatory;
+    scroll-behavior: smooth;
+    scroll-padding-inline: 0 0.75rem;
+    scrollbar-width: none;
+    padding: 0 0.75rem 0.25rem 0;
+  }
+  .artist-album-row::-webkit-scrollbar {
+    display: none;
+  }
+  .artist-album-card {
+    min-width: 0;
+    color: inherit;
+    text-decoration: none;
+    scroll-snap-align: start;
+  }
+  .artist-album-cover {
+    width: 100%;
+    aspect-ratio: 1 / 1;
+    border-radius: 8px;
+    overflow: hidden;
+    background: var(--cover-bg);
+    border: 1px solid var(--border-soft);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--subtle);
+    font-size: 2rem;
+    transition: transform .16s, filter .16s, border-color .16s;
+  }
+  .artist-album-card:hover .artist-album-cover {
+    transform: translateY(-2px);
+    filter: brightness(1.08);
+    border-color: var(--border);
+  }
+  .artist-album-cover img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+  }
+  .collection-cover {
+    width: 100%;
+    aspect-ratio: 1 / 1;
+    border-radius: 8px;
+    background: var(--cover-bg);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    color: var(--subtle);
+    font-size: 2rem;
+  }
+  .collection-cover img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+  }
+  .artist-album-title {
+    color: var(--text);
+    font-size: 0.78rem;
+    font-weight: 750;
+    line-height: 1.2;
+    margin-top: 0.52rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .artist-album-year {
+    color: var(--muted);
+    font-size: 0.72rem;
+    line-height: 1.2;
+    margin-top: 0.12rem;
+    min-height: 0.85rem;
+  }
+  @media (max-width: 720px) {
+    .artist-directory-panel { padding: 0.85rem; }
+    .collection-toolbar {
+      grid-template-columns: 1fr 1fr;
+    }
+    .collection-toolbar .collection-control:first-child {
+      grid-column: 1 / -1;
+    }
+    .collection-apply,
+    .collection-reset {
+      width: 100%;
+    }
+    .artist-row-controls { display: none; }
+    .artist-album-row {
+      grid-auto-columns: minmax(8.8rem, 44vw);
+      padding-right: 0.25rem;
+      scroll-padding-right: 0.25rem;
+    }
+  }
+</style>
+{% endblock %}
 
 {% block content %}
 <div class="flex items-center justify-between mb-6">
   <div class="flex items-baseline gap-3">
     <h1 class="text-2xl font-bold text-white">Collection</h1>
-    <span class="text-sm text-muted" id="collection-stats">{{ total }} albums</span>
+    <span class="text-sm text-muted" id="collection-stats">{{ total }} albums · {{ artist_total }} artists</span>
+    <button
+      id="artist-directory-toggle"
+      type="button"
+      class="text-xs px-2.5 py-1 rounded-full border border-border text-gray-300 hover:text-white hover:border-gray-500 transition-colors">
+      Show artists
+    </button>
   </div>
   <button
     hx-post="/api/collection/refresh"
     hx-target="#collection-stats"
     hx-swap="outerHTML"
+    data-toast-success="Collection refreshed."
+    data-toast-error="Collection refresh failed."
     class="text-xs px-3 py-1.5 rounded-lg border border-border text-muted hover:text-white hover:border-gray-500 transition-colors">
     Refresh
   </button>
 </div>
 
-<!-- Search -->
-<form method="get" action="/collection" class="mb-6">
-  <input type="text" name="q" value="{{ query }}"
-    placeholder="Search your collection..."
-    class="w-full bg-white border border-gray-300 text-gray-900 placeholder-gray-400 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent">
+<section id="artist-directory" class="artist-directory-panel hidden mb-8">
+  <div class="flex items-baseline justify-between gap-3 mb-4">
+    <h2 class="text-lg font-bold text-white">Artists</h2>
+    <span class="text-xs text-muted">{{ artist_total }} total</span>
+  </div>
+  <div>
+    {% for group in artist_groups %}
+    <div class="artist-group">
+      <div class="artist-group-head">
+        <div class="artist-name-line">
+          <a href="/artist/{{ group.artist | urlencode }}" class="text-sm font-semibold text-white hover:text-accent transition-colors">
+            {{ group.artist }}
+          </a>
+          <span>{{ group.albums|length }} album{{ 's' if group.albums|length != 1 }}</span>
+        </div>
+        {% if group.albums|length > 5 %}
+        <div class="artist-row-controls">
+          <button type="button" class="artist-shelf-button" data-artist-scroll="-1" aria-label="Scroll {{ group.artist }} albums left"></button>
+          <button type="button" class="artist-shelf-button" data-artist-scroll="1" aria-label="Scroll {{ group.artist }} albums right"></button>
+        </div>
+        {% endif %}
+      </div>
+      <div class="artist-album-row" tabindex="0">
+        {% for a in group.albums %}
+        <a href="/album/{{ a.mb_id if a.mb_id else '_' }}?artist={{ a.artist | urlencode }}&album={{ a.album | urlencode }}&cover={{ (a.cover_url or '') | urlencode }}{% if a.year %}&year={{ a.year | urlencode }}{% endif %}"
+           class="artist-album-card">
+          <div class="artist-album-cover{% if a.cover_url %} skeleton-surface{% else %} has-error{% endif %}">
+          {% if a.cover_url %}
+          <img src="{{ a.cover_url }}" alt="{{ a.album }}" loading="lazy" onerror="this.parentElement.classList.add('has-error'); this.parentElement.innerHTML='♪'">
+          {% else %}
+          ♪
+          {% endif %}
+          </div>
+          <div class="artist-album-title">{{ a.album }}</div>
+          <div class="artist-album-year">{{ a.year or "" }}</div>
+        </a>
+        {% endfor %}
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+</section>
+
+<form method="get" action="/collection" class="collection-toolbar">
+  <div class="collection-control">
+    <label for="collection-q">Search</label>
+    <input id="collection-q" type="text" name="q" value="{{ query }}"
+      placeholder="Album or artist..."
+      class="w-full bg-white border border-gray-300 text-gray-900 placeholder-gray-400 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent">
+  </div>
+  <div class="collection-control">
+    <label for="collection-sort">Sort</label>
+    <select id="collection-sort" name="sort"
+      class="w-full bg-white border border-gray-300 text-gray-900 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent">
+      <option value="recent" {% if sort == "recent" %}selected{% endif %}>Recently added</option>
+      <option value="album" {% if sort == "album" %}selected{% endif %}>Album A-Z</option>
+      <option value="artist" {% if sort == "artist" %}selected{% endif %}>Artist A-Z</option>
+      <option value="year_desc" {% if sort == "year_desc" %}selected{% endif %}>Newest year</option>
+      <option value="year_asc" {% if sort == "year_asc" %}selected{% endif %}>Oldest year</option>
+    </select>
+  </div>
+  <div class="collection-control">
+    <label for="collection-cover">Covers</label>
+    <select id="collection-cover" name="cover"
+      class="w-full bg-white border border-gray-300 text-gray-900 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent">
+      <option value="all" {% if cover == "all" %}selected{% endif %}>All albums</option>
+      <option value="with" {% if cover == "with" %}selected{% endif %}>Has cover</option>
+      <option value="missing" {% if cover == "missing" %}selected{% endif %}>Missing cover</option>
+    </select>
+  </div>
+  <button type="submit" class="collection-apply">Apply</button>
+  <a href="/collection" class="collection-reset">Reset</a>
 </form>
 
-{% if query %}
-<p class="text-sm text-muted mb-4">{{ total }} result{{ 's' if total != 1 }} for "{{ query }}"</p>
-{% endif %}
+<p class="text-sm text-muted mb-4">
+  Showing {{ total }} album{{ 's' if total != 1 }}
+  {% if query %} for "{{ query }}"{% endif %}
+  {% if cover == "with" %} with cover art{% elif cover == "missing" %} missing cover art{% endif %}.
+</p>
 
 {% if albums %}
-<div class="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-8 gap-3">
+<div class="collection-grid">
   {% for a in albums %}
   <div class="cursor-pointer group"
-       onclick="window.location='/album/{{ a.mb_id if a.mb_id else '_' }}?artist={{ a.artist | urlencode }}&album={{ a.album | urlencode }}&cover={{ (a.cover_url or '') | urlencode }}'">
-    <img src="{{ a.cover_url }}"
-         alt="{{ a.album }}"
-         loading="lazy"
-         class="w-full aspect-square object-cover rounded-lg group-hover:opacity-80 transition-opacity mb-2"
-         onerror="this.outerHTML='<div class=\'w-full aspect-square bg-border rounded-lg flex items-center justify-center text-4xl text-gray-600 mb-2\'>♪</div>'">
+       onclick="window.location='/album/{{ a.mb_id if a.mb_id else '_' }}?artist={{ a.artist | urlencode }}&album={{ a.album | urlencode }}&cover={{ (a.cover_url or '') | urlencode }}{% if a.year %}&year={{ a.year | urlencode }}{% endif %}'">
+    <div class="collection-cover{% if a.cover_url %} skeleton-surface{% else %} has-error{% endif %} group-hover:opacity-80 transition-opacity mb-2">
+      {% if a.cover_url %}
+      <img src="{{ a.cover_url }}"
+           alt="{{ a.album }}"
+           loading="lazy"
+           onerror="this.parentElement.classList.add('has-error'); this.parentElement.innerHTML='♪'">
+      {% else %}
+      ♪
+      {% endif %}
+    </div>
     <p class="text-white text-xs font-semibold truncate leading-tight">{{ a.album }}</p>
     <a href="/artist/{{ a.artist | urlencode }}"
        class="text-muted text-xs truncate block hover:text-white transition-colors leading-tight mt-0.5"
@@ -47,5 +383,54 @@
 {% else %}
 <p class="text-muted text-center py-16">No albums found{% if query %} for "{{ query }}"{% endif %}.</p>
 {% endif %}
+
+<script>
+  const artistToggle = document.getElementById('artist-directory-toggle');
+  const artistDirectory = document.getElementById('artist-directory');
+  const initialCollectionCounts = { albums: {{ total }}, artists: {{ artist_total }} };
+
+  artistToggle?.addEventListener('click', () => {
+    const isHidden = artistDirectory.classList.toggle('hidden');
+    artistToggle.textContent = isHidden ? 'Show artists' : 'Hide artists';
+  });
+
+  document.addEventListener('click', (event) => {
+    const button = event.target.closest('[data-artist-scroll]');
+    if (!button) return;
+
+    const group = button.closest('.artist-group');
+    const row = group?.querySelector('.artist-album-row');
+    if (!row) return;
+
+    const direction = Number(button.dataset.artistScroll || 1);
+    const firstCard = row.querySelector('.artist-album-card');
+    const secondCard = firstCard?.nextElementSibling;
+    if (!firstCard) return;
+
+    const cardStep = secondCard
+      ? secondCard.offsetLeft - firstCard.offsetLeft
+      : firstCard.offsetWidth;
+    const visibleCards = Math.max(1, Math.floor(row.clientWidth / cardStep) - 1);
+    const currentIndex = Math.round(row.scrollLeft / cardStep);
+    const targetIndex = currentIndex + direction * visibleCards;
+    const maxScroll = row.scrollWidth - row.clientWidth;
+    const target = Math.max(0, Math.min(targetIndex * cardStep, maxScroll));
+
+    row.scrollTo({ left: target, behavior: 'smooth' });
+  });
+
+  async function watchCollectionCounts() {
+    try {
+      const response = await fetch('/api/collection/counts?refresh=1', { cache: 'no-store' });
+      if (!response.ok) return;
+      const counts = await response.json();
+      if (counts.albums !== initialCollectionCounts.albums || counts.artists !== initialCollectionCounts.artists) {
+        window.location.reload();
+      }
+    } catch (error) {}
+  }
+
+  setInterval(watchCollectionCounts, 60000);
+</script>
 
 {% endblock %}

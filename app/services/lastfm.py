@@ -522,6 +522,100 @@ class LastFmClient:
             for a in albums
         ]
 
+    async def get_tag_top_albums(self, tag: str, limit: int = 24) -> list[dict]:
+        if not tag.strip():
+            return []
+        try:
+            r = await self._client.get(self.BASE_URL, params={
+                "method": "tag.getTopAlbums",
+                "tag": tag,
+                "api_key": settings.lastfm_api_key,
+                "format": "json",
+                "limit": limit * 2,
+            })
+            if not r.is_success:
+                return []
+        except Exception:
+            return []
+
+        albums = r.json().get("albums", {}).get("album", [])
+        out = []
+        seen = set()
+        for index, album in enumerate(albums, 1):
+            artist = album.get("artist", {}).get("name", "")
+            title = album.get("name", "")
+            if not artist or not title or title == "(null)":
+                continue
+            key = f"{artist.lower()}|{normalize_album(title).lower()}"
+            if key in seen:
+                continue
+            seen.add(key)
+            cover = next(
+                (img["#text"] for img in album.get("image", [])
+                 if img["size"] == "extralarge" and img["#text"]
+                 and "2a96cbd8b46e442fc41c2b86b821562f" not in img["#text"]),
+                None,
+            )
+            out.append({
+                "artist": artist,
+                "album": title,
+                "mb_id": album.get("mbid", ""),
+                "cover_url": cover,
+                "playcount": album.get("playcount", ""),
+                "rank": index,
+                "tag": tag,
+            })
+            if len(out) >= limit:
+                break
+        return out
+
+    async def get_tag_top_tracks(self, tag: str, limit: int = 12) -> list[dict]:
+        if not tag.strip():
+            return []
+        try:
+            r = await self._client.get(self.BASE_URL, params={
+                "method": "tag.getTopTracks",
+                "tag": tag,
+                "api_key": settings.lastfm_api_key,
+                "format": "json",
+                "limit": limit * 2,
+            })
+            if not r.is_success:
+                return []
+        except Exception:
+            return []
+
+        tracks = r.json().get("tracks", {}).get("track", [])
+        out = []
+        seen = set()
+        for index, track in enumerate(tracks, 1):
+            artist = track.get("artist", {}).get("name", "")
+            title = track.get("name", "")
+            if not artist or not title:
+                continue
+            key = f"{artist.lower()}|{title.lower()}"
+            if key in seen:
+                continue
+            seen.add(key)
+            cover = next(
+                (img["#text"] for img in track.get("image", [])
+                 if img["size"] == "extralarge" and img["#text"]
+                 and "2a96cbd8b46e442fc41c2b86b821562f" not in img["#text"]),
+                None,
+            )
+            out.append({
+                "artist": artist,
+                "track": title,
+                "title": title,
+                "cover_url": cover,
+                "playcount": track.get("playcount", ""),
+                "rank": index,
+                "tag": tag,
+            })
+            if len(out) >= limit:
+                break
+        return await self.enrich_tracks_with_covers(out)
+
     async def get_recent_tracks(self, limit: int = 10) -> list[dict]:
         r = await self._client.get(self.BASE_URL, params={
             "method": "user.getrecenttracks",
@@ -587,6 +681,9 @@ class LastFmClient:
             raw_tracks = a.get("tracks", {}).get("track", [])
             if isinstance(raw_tracks, dict):
                 raw_tracks = [raw_tracks]
+            wiki = a.get("wiki", {}).get("summary", "")
+            if "<a href" in wiki:
+                wiki = wiki[:wiki.index("<a href")].strip()
             tracks = []
             for t in raw_tracks:
                 dur = int(t.get("duration") or 0)
@@ -604,6 +701,40 @@ class LastFmClient:
                 "tracks": tracks,
                 "listeners": int(a.get("listeners") or 0),
                 "playcount": int(a.get("playcount") or 0),
+                "summary": wiki,
+            }
+        except Exception:
+            return None
+
+    async def get_track_info(self, artist: str, track: str) -> dict | None:
+        try:
+            r = await self._client.get(self.BASE_URL, params={
+                "method": "track.getInfo",
+                "artist": artist,
+                "track": track,
+                "api_key": settings.lastfm_api_key,
+                "format": "json",
+                "autocorrect": 1,
+            })
+            r.raise_for_status()
+            t = r.json().get("track", {})
+            if not t:
+                return None
+            album = t.get("album", {}) or {}
+            wiki = t.get("wiki", {}).get("summary", "")
+            if "<a href" in wiki:
+                wiki = wiki[:wiki.index("<a href")].strip()
+            duration_ms = int(t.get("duration") or 0)
+            return {
+                "track": t.get("name", track),
+                "artist": t.get("artist", {}).get("name", artist),
+                "album": album.get("title", ""),
+                "album_mbid": album.get("mbid", ""),
+                "duration": f"{duration_ms//60000}:{(duration_ms%60000)//1000:02d}" if duration_ms else "",
+                "listeners": int(t.get("listeners") or 0),
+                "playcount": int(t.get("playcount") or 0),
+                "tags": [tag["name"] for tag in t.get("toptags", {}).get("tag", [])],
+                "summary": wiki,
             }
         except Exception:
             return None
@@ -1034,7 +1165,7 @@ class LastFmClient:
                 main_artist = _primary_artist(artist)
 
                 # Step 1: Last.fm album.getinfo (best source when album title is known)
-                cover = None
+                cover = t.get("cover_url")
                 if artist and album_title:
                     cover = await _lfm_cover(artist, album_title)
                 # Retry with main artist name if feat. was stripped

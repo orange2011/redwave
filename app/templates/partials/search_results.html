@@ -1,98 +1,200 @@
-{% if collection_hits %}
-<div class="mb-6">
-  <p class="text-xs text-muted uppercase tracking-widest mb-3">In Your Collection</p>
-  <div class="search-grid">
-    {% for r in collection_hits %}
-    <a href="/album/_?artist={{ r.artist | urlencode }}&album={{ r.album | urlencode }}&cover={{ r.cover_url | urlencode }}"
-       class="album-card">
-      <div class="album-cover">
-        <img src="{{ r.cover_url }}" alt="{{ r.album }}" onerror="this.parentElement.innerHTML='♪'">
-      </div>
-      <div class="album-info">
-        <div class="album-name">{{ r.album }}</div>
-        <div class="album-artist">{{ r.artist }}</div>
-        <div style="font-size:0.65rem; color:#7c3aed; margin-top:2px;">In Collection</div>
-      </div>
-    </a>
-    {% endfor %}
+{% macro album_card(r, in_collection=False) %}
+<a href="/album/{{ r.mb_id if r.mb_id else '_' }}?artist={{ r.artist | urlencode }}&album={{ r.album | urlencode }}&cover={{ (r.cover_url or '') | urlencode }}{% if r.year %}&year={{ r.year | urlencode }}{% endif %}{% if r.deezer_id %}&deezer_id={{ r.deezer_id }}{% endif %}"
+   class="album-card">
+  <div class="album-cover{% if r.cover_url %} skeleton-surface{% else %} has-error{% endif %}">
+    {% if r.cover_url %}
+    <img src="{{ r.cover_url }}" alt="{{ r.album }}" onerror="this.parentElement.classList.add('has-error'); this.parentElement.innerHTML='♪'">
+    {% else %}
+    ♪
+    {% endif %}
   </div>
-</div>
-{% endif %}
+  <div class="album-info">
+    <div class="album-name">{{ r.album }}</div>
+    <div class="album-artist">{{ r.artist }}{% if in_collection %} · In Library{% endif %}</div>
+  </div>
+</a>
+{% endmacro %}
 
-{% if artists %}
-<div class="mb-6">
-  <p class="text-xs text-muted uppercase tracking-widest mb-3">Artists</p>
-  <div class="flex flex-wrap gap-3">
-    {% for a in artists %}
-    <a href="/artist/{{ a.name | urlencode }}"
-       class="flex items-center gap-3 px-3 py-2 rounded-xl hover:scale-105 transition-all duration-200"
-       style="background:#16161f; min-width:160px;">
-      {% if a.image %}
-      <img src="{{ a.image }}" alt="{{ a.name }}"
-           style="width:40px; height:40px; border-radius:50%; object-fit:cover; flex-shrink:0;"
-           onerror="this.outerHTML='<div style=\'width:40px;height:40px;border-radius:50%;background:#2a2a3a;display:flex;align-items:center;justify-content:center;font-size:1.2rem;\'>♪</div>'">
-      {% else %}
-      <div style="width:40px; height:40px; border-radius:50%; background:#2a2a3a; display:flex; align-items:center; justify-content:center; font-size:1.2rem; flex-shrink:0;">♪</div>
-      {% endif %}
-      <div style="min-width:0;">
-        <p class="text-white text-sm font-semibold truncate">{{ a.name }}</p>
-        {% if a.listeners %}
-        <p class="text-muted text-xs">{{ "{:,}".format(a.listeners) }} listeners</p>
-        {% endif %}
-      </div>
-    </a>
-    {% endfor %}
-  </div>
-</div>
-{% endif %}
+{% if top_result or track_results %}
+<div class="search-shell">
+  <nav class="search-quick-tabs" aria-label="Result sections">
+    <button type="button" data-result-filter="all" aria-pressed="true">All</button>
+    {% if top_result %}<button type="button" data-result-filter="best" aria-pressed="false">Best match</button>{% endif %}
+    {% if track_results %}<button type="button" data-result-filter="songs" aria-pressed="false">Songs <span>{{ track_results|length }}</span></button>{% endif %}
+    {% if artists %}<button type="button" data-result-filter="artists" aria-pressed="false">Artists <span>{{ artists|length }}</span></button>{% endif %}
+    {% if results %}<button type="button" data-result-filter="albums" aria-pressed="false">Albums <span>{{ results|length }}</span></button>{% endif %}
+    {% if collection_hits %}<button type="button" data-result-filter="library" aria-pressed="false">Library <span>{{ collection_hits|length }}</span></button>{% endif %}
+  </nav>
 
-{% if results %}
-{% if artists %}<p class="text-xs text-muted uppercase tracking-widest mb-3">Albums</p>{% endif %}
-<div class="search-grid">
-  {% for r in results %}
-  <a href="/album/{{ r.mb_id if r.mb_id else '_' }}?artist={{ r.artist | urlencode }}&album={{ r.album | urlencode }}&cover={{ (r.cover_url or '') | urlencode }}{% if r.deezer_id %}&deezer_id={{ r.deezer_id }}{% endif %}"
-     class="album-card">
-    <div class="album-cover">
-      {% if r.cover_url %}
-      <img src="{{ r.cover_url }}" alt="{{ r.album }}" onerror="this.parentElement.innerHTML='♪'">
+  <div class="search-overview">
+    {% if top_result %}
+    <section id="top-result">
+      <h2 class="section-title">Top Result</h2>
+      {% if top_result.type == "artist" %}
+      <a href="/artist/{{ top_result.name | urlencode }}" class="top-result-card">
+        <div class="top-result-cover artist{% if top_result.image %} skeleton-surface{% else %} has-error{% endif %}">
+          {% if top_result.image %}
+          <img src="{{ top_result.image }}" alt="{{ top_result.name }}" onerror="this.parentElement.classList.add('has-error'); this.outerHTML='♪'">
+          {% else %}
+          ♪
+          {% endif %}
+        </div>
+        <div class="top-result-body">
+          <div>
+            <div class="top-result-title">{{ top_result.name }}</div>
+            <div class="top-result-meta">Artist{% if top_result.listeners %} · {{ "{:,}".format(top_result.listeners) }} listeners{% endif %}</div>
+          </div>
+          {% if top_result.about %}
+          <div class="top-result-about">
+            <div class="top-result-about-title">{{ top_result.about.heading }}</div>
+            <p>{{ top_result.about.text }}</p>
+            {% if top_result.about.facts %}
+            <div class="top-result-facts">
+              {% for fact in top_result.about.facts[:4] %}
+              <span>{{ fact }}</span>
+              {% endfor %}
+            </div>
+            {% endif %}
+          </div>
+          {% endif %}
+        </div>
+      </a>
+      {% elif top_result.type == "track" %}
+      <a href="/album/{{ top_result.mb_id if top_result.mb_id else '_' }}?artist={{ top_result.artist | urlencode }}&album={{ top_result.album | urlencode }}&cover={{ (top_result.cover_url or '') | urlencode }}{% if top_result.year %}&year={{ top_result.year | urlencode }}{% endif %}&highlight={{ top_result.track | urlencode }}"
+         class="top-result-card">
+        <div class="top-result-cover{% if top_result.cover_url %} skeleton-surface{% else %} has-error{% endif %}">
+          {% if top_result.cover_url %}
+          <img src="{{ top_result.cover_url }}" alt="{{ top_result.track }}" onerror="this.parentElement.classList.add('has-error'); this.parentElement.innerHTML='♪'">
+          {% else %}
+          ♪
+          {% endif %}
+        </div>
+        <div class="top-result-body">
+          <div>
+            <div class="top-result-title">{{ top_result.track }}</div>
+            <div class="top-result-meta">Song · {{ top_result.artist }}</div>
+          </div>
+          <div class="top-result-detail">{{ top_result.album }}</div>
+          {% if top_result.about %}
+          <div class="top-result-about">
+            <div class="top-result-about-title">{{ top_result.about.heading }}</div>
+            <p>{{ top_result.about.text }}</p>
+            {% if top_result.about.facts %}
+            <div class="top-result-facts">
+              {% for fact in top_result.about.facts[:4] %}
+              <span>{{ fact }}</span>
+              {% endfor %}
+            </div>
+            {% endif %}
+          </div>
+          {% endif %}
+        </div>
+      </a>
       {% else %}
-      ♪
+      <a href="/album/{{ top_result.mb_id if top_result.mb_id else '_' }}?artist={{ top_result.artist | urlencode }}&album={{ top_result.album | urlencode }}&cover={{ (top_result.cover_url or '') | urlencode }}{% if top_result.year %}&year={{ top_result.year | urlencode }}{% endif %}{% if top_result.deezer_id %}&deezer_id={{ top_result.deezer_id }}{% endif %}"
+         class="top-result-card">
+        <div class="top-result-cover{% if top_result.cover_url %} skeleton-surface{% else %} has-error{% endif %}">
+          {% if top_result.cover_url %}
+          <img src="{{ top_result.cover_url }}" alt="{{ top_result.album }}" onerror="this.parentElement.classList.add('has-error'); this.parentElement.innerHTML='♪'">
+          {% else %}
+          ♪
+          {% endif %}
+        </div>
+        <div class="top-result-body">
+          <div>
+            <div class="top-result-title">{{ top_result.album }}</div>
+            <div class="top-result-meta">Album{% if top_result.in_collection %} · In Library{% endif %}</div>
+          </div>
+          <div class="top-result-detail">{{ top_result.artist }}</div>
+          {% if top_result.about %}
+          <div class="top-result-about">
+            <div class="top-result-about-title">{{ top_result.about.heading }}</div>
+            <p>{{ top_result.about.text }}</p>
+            {% if top_result.about.facts %}
+            <div class="top-result-facts">
+              {% for fact in top_result.about.facts[:4] %}
+              <span>{{ fact }}</span>
+              {% endfor %}
+            </div>
+            {% endif %}
+          </div>
+          {% endif %}
+        </div>
+      </a>
       {% endif %}
-    </div>
-    <div class="album-info">
-      <div class="album-name">{{ r.album }}</div>
-      <div class="album-artist">{{ r.artist }}</div>
-    </div>
-  </a>
-  {% endfor %}
-</div>
-{% if track_results %}
-<div class="mt-6 mb-2">
-  <p class="text-xs text-muted uppercase tracking-widest mb-3">Tracks</p>
-  <div class="flex flex-col gap-1">
-    {% for t in track_results %}
-    <a href="/album/{{ t.mb_id if t.mb_id else '_' }}?artist={{ t.artist | urlencode }}&album={{ t.album | urlencode }}&cover={{ (t.cover_url or '') | urlencode }}&highlight={{ t.track | urlencode }}"
-       class="track-row flex items-center gap-3 px-3 py-2 rounded-lg transition-colors">
-      <div style="width:40px; height:40px; flex-shrink:0; border-radius:6px; overflow:hidden; background:#2a2a3a; display:flex; align-items:center; justify-content:center; font-size:1rem; color:#6b7280;">
-        {% if t.cover_url %}
-        <img src="{{ t.cover_url }}" alt="" style="width:100%; height:100%; object-fit:cover;" onerror="this.outerHTML='♪'">
-        {% else %}♪{% endif %}
+    </section>
+    {% endif %}
+
+    {% if track_results %}
+    <section id="songs">
+      <h2 class="section-title">Songs</h2>
+      <div class="track-list">
+        {% for t in track_results[:5] %}
+        <a href="/album/{{ t.mb_id if t.mb_id else '_' }}?artist={{ t.artist | urlencode }}&album={{ t.album | urlencode }}&cover={{ (t.cover_url or '') | urlencode }}{% if t.year %}&year={{ t.year | urlencode }}{% endif %}&highlight={{ t.track | urlencode }}"
+           class="track-row">
+          <div class="track-cover{% if t.cover_url %} skeleton-surface{% else %} has-error{% endif %}">
+            {% if t.cover_url %}
+            <img src="{{ t.cover_url }}" alt="" onerror="this.parentElement.classList.add('has-error'); this.outerHTML='♪'">
+            {% else %}♪{% endif %}
+          </div>
+          <div style="min-width:0;">
+            <div class="track-name">{{ t.track }}</div>
+            <div class="track-meta">{{ t.artist }} · {{ t.album }}</div>
+          </div>
+          <div class="track-mark">♪</div>
+        </a>
+        {% endfor %}
       </div>
-      <div style="min-width:0; flex:1;">
-        <div class="text-white text-sm font-medium truncate">{{ t.track }}</div>
-        <div class="text-xs truncate" style="color:#9ca3af;">{{ t.artist }} — <span style="color:#6b7280;">{{ t.album }}</span></div>
-      </div>
-      <div class="text-xs flex-shrink-0" style="color:#4b5563;">♪</div>
-    </a>
-    {% endfor %}
+    </section>
+    {% endif %}
   </div>
+
+  {% if artists %}
+  <section id="artists" class="result-shelf">
+    <h2 class="section-title">Artists</h2>
+    <div class="artist-shelf">
+      {% for a in artists %}
+      <a href="/artist/{{ a.name | urlencode }}" class="artist-card">
+        <div class="artist-avatar{% if a.image %} skeleton-surface{% else %} has-error{% endif %}">
+          {% if a.image %}
+          <img src="{{ a.image }}" alt="{{ a.name }}" onerror="this.parentElement.classList.add('has-error'); this.outerHTML='♪'">
+          {% else %}♪{% endif %}
+        </div>
+        <div class="artist-name">{{ a.name }}</div>
+        <div class="artist-meta">Artist{% if a.listeners %} · {{ "{:,}".format(a.listeners) }} listeners{% endif %}</div>
+      </a>
+      {% endfor %}
+    </div>
+  </section>
+  {% endif %}
+
+  {% if results %}
+  <section id="albums" class="result-shelf">
+    <h2 class="section-title">Albums</h2>
+    <div class="horizontal-shelf">
+      {% for r in results %}
+      {{ album_card(r) }}
+      {% endfor %}
+    </div>
+  </section>
+  {% endif %}
+
+  {% if collection_hits %}
+  <section id="library" class="result-shelf">
+    <h2 class="section-title">In Your Library</h2>
+    <div class="horizontal-shelf">
+      {% for r in collection_hits %}
+      {{ album_card(r, True) }}
+      {% endfor %}
+    </div>
+  </section>
+  {% endif %}
 </div>
-{% endif %}
 
 {% elif url_not_supported %}
 <p class="search-empty">Could not resolve that URL. Try a Last.fm, Deezer, Apple Music, Spotify, Discogs, or MusicBrainz link, or search by name.</p>
-{% elif query and not artists %}
+{% elif query %}
 <p class="search-empty">No results found for "{{ query }}"</p>
-{% elif not query %}
+{% else %}
 <p class="search-empty">Start typing to search...</p>
 {% endif %}
