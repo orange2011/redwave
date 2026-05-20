@@ -102,6 +102,19 @@ class SettingsTests(unittest.TestCase):
 
         asyncio.run(run())
 
+    def test_qbittorrent_accepts_json_add_success_and_hash(self):
+        response = httpx.Response(200, json={
+            "added_torrent_ids": ["9d74c3427763bbac0abc9ec0f7feab12bcfa0eaa"],
+            "failure_count": 0,
+            "pending_count": 0,
+            "success_count": 1,
+        })
+
+        result = QBittorrentClient().parse_add_response(response)
+
+        self.assertTrue(result)
+        self.assertEqual(result.hashes, ["9d74c3427763bbac0abc9ec0f7feab12bcfa0eaa"])
+
 
 if __name__ == "__main__":
     unittest.main()

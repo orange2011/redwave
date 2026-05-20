@@ -238,9 +238,11 @@ function openLightbox(src) {
   const frame = document.getElementById('lightbox-frame');
   frame.replaceChildren();
   const img = document.createElement('img');
-  img.src = src;
+  const hqSrc = window.redwaveHighQualityImageUrl ? window.redwaveHighQualityImageUrl(src) : src;
+  img.src = hqSrc;
   img.alt = '';
-  img.style.cssText = 'width:min(92vw, 760px); height:auto; max-height:92vh; object-fit:contain; border-radius:0.5rem; box-shadow:0 0 60px rgba(0,0,0,0.8);';
+  img.onerror = () => { if (img.src !== src) img.src = src; };
+  img.style.cssText = 'width:min(94vw, 1100px); height:auto; max-height:92vh; object-fit:contain; border-radius:0.5rem; box-shadow:0 0 60px rgba(0,0,0,0.8);';
   frame.appendChild(img);
   lb.style.display = 'flex';
 }

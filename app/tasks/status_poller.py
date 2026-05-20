@@ -9,11 +9,51 @@ from app.services.qbittorrent import qbt_client
 from app.services.redacted import ops_client
 
 
-COMPLETED_STATES = {"uploading", "pausedUP", "stoppedUP", "seeding", "forcedUP"}
+COMPLETED_STATES = {
+    "uploading",
+    "pausedUP",
+    "stoppedUP",
+    "seeding",
+    "forcedUP",
+    "queuedUP",
+    "stalledUP",
+    "checkingUP",
+}
 
 
 def _truthy(value: str | bool | None) -> bool:
     return str(value or "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _hash(value: str | None) -> str:
+    return (value or "").strip().lower()
+
+
+def _merge_torrents(*groups: list[dict]) -> list[dict]:
+    merged = []
+    seen = set()
+    for group in groups:
+        for torrent in group:
+            key = _hash(torrent.get("hash")) or torrent.get("name", "")
+            if key in seen:
+                continue
+            merged.append(torrent)
+            seen.add(key)
+    return merged
+
+
+def _find_by_hash(torrents: list[dict], info_hash: str | None) -> dict | None:
+    wanted = _hash(info_hash)
+    if not wanted:
+        return None
+    for torrent in torrents:
+        if _hash(torrent.get("hash")) == wanted:
+            return torrent
+    return None
+
+
+def _is_completed_state(state: str | None) -> bool:
+    return (state or "") in COMPLETED_STATES
 
 
 async def _add_pending_ops_cross_seed(option: TorrentOption | None) -> bool:
@@ -59,7 +99,11 @@ async def poll_active_downloads():
         if not active:
             return
 
-        all_torrents = await qbt_client.get_all_torrents(category=settings.qbt_category)
+        category_torrents = await qbt_client.get_all_torrents(category=settings.qbt_category)
+        all_torrents = category_torrents
+        if settings.qbt_category:
+            uncategorized_or_other = await qbt_client.get_all_torrents(category="")
+            all_torrents = _merge_torrents(category_torrents, uncategorized_or_other)
 
         for req in active:
             if not req.qbt_hash:
@@ -71,14 +115,12 @@ async def poll_active_downloads():
                         break
 
             if req.qbt_hash:
-                for t in all_torrents:
-                    if t.get("hash") == req.qbt_hash:
-                        if t.get("state") in COMPLETED_STATES:
-                            req.status = "completed"
-                            selected = None
-                            if req.selected_torrent_id:
-                                selected = await db.get(TorrentOption, req.selected_torrent_id)
-                            await _add_pending_ops_cross_seed(selected)
-                        break
+                t = _find_by_hash(all_torrents, req.qbt_hash)
+                if t and _is_completed_state(t.get("state")):
+                    req.status = "completed"
+                    selected = None
+                    if req.selected_torrent_id:
+                        selected = await db.get(TorrentOption, req.selected_torrent_id)
+                    await _add_pending_ops_cross_seed(selected)
 
         await db.commit()
