@@ -271,8 +271,30 @@
   <p class="text-muted text-sm mb-8">Configure Redwave, RED search, metadata sources, and downloads.</p>
 
   {% if saved %}
-  <div class="mb-6 px-4 py-3 rounded-lg text-sm font-medium" style="background:rgba(34,197,94,0.12); border:1px solid rgba(34,197,94,0.3); color:#22c55e;">
-    Settings saved.
+  <div class="mb-6 px-4 py-3 rounded-lg text-sm font-medium"
+       style="background:{% if save_failed %}rgba(248,113,113,0.12){% else %}rgba(34,197,94,0.12){% endif %}; border:1px solid {% if save_failed %}rgba(248,113,113,0.3){% else %}rgba(34,197,94,0.3){% endif %}; color:{% if save_failed %}#f87171{% else %}#22c55e{% endif %};">
+    {% if save_failed %}
+    Settings saved, but one or more checks failed.
+    {% else %}
+    Settings saved and configured checks passed.
+    {% endif %}
+    {% if save_checks %}
+    <div style="display:grid; gap:.35rem; margin-top:.7rem;">
+      {% for check in save_checks %}
+      <div style="display:flex; gap:.55rem; align-items:flex-start; color:var(--text-soft); font-weight:600;">
+        <span style="width:4.8rem; color:var(--muted);">{{ check.label }}</span>
+        {% if check.ok is sameas true %}
+        <span style="color:#22c55e;">OK</span>
+        {% elif check.ok is sameas false %}
+        <span style="color:#f87171;">Failed</span>
+        {% else %}
+        <span style="color:var(--subtle);">Skipped</span>
+        {% endif %}
+        <span style="color:var(--muted); font-weight:500;">{{ check.msg }}</span>
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
   </div>
   {% endif %}
 
@@ -473,10 +495,15 @@
             <div class="settings-row">
               <div class="settings-row-label">
                 <h3>qBittorrent</h3>
-                <p>Used after you choose a RED torrent and press Grab.</p>
+                <p>Used after you choose a RED torrent and press Grab. In Docker, use the qBittorrent service/container name, not localhost.</p>
               </div>
               <div class="settings-fields">
                 {{ field("QBT_HOST", "Host URL", env, placeholder="http://localhost:8080", test="qbittorrent") }}
+                <p class="settings-muted">
+                  Use the same internal host/port style as Radarr or Sonarr. Same Docker network example:
+                  <code>http://qbittorrent:8080</code>. If your Arr apps use a VPN container as the host,
+                  use that service name instead, for example <code>http://gluetun:8080</code>.
+                </p>
                 {{ field("QBT_USERNAME", "Username", env) }}
                 {{ field("QBT_PASSWORD", "Password", env, password=True) }}
                 {{ field("QBT_CATEGORY", "Torrent Category", env, placeholder="music") }}
@@ -516,7 +543,7 @@
         </section>
 
         <div class="settings-actions">
-          <span class="settings-muted">Save applies new values immediately.</span>
+          <span class="settings-muted">Save applies new values and tests every configured service.</span>
           <button type="submit"
             class="px-6 py-2.5 rounded-lg text-sm font-semibold text-white transition-colors"
             style="background:var(--purple);">

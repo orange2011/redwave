@@ -364,6 +364,7 @@ async def grab_torrent(
     quality_profile = normalize_quality_profile(settings.red_quality_profile)
     media_scores = current_media_scores()
     cross_seed_status = ""
+    grab_error = ""
 
     # Create or get existing request
     result = await db.execute(
@@ -424,6 +425,7 @@ async def grab_torrent(
             album_request.status = "failed"
     except Exception as e:
         album_request.status = "failed"
+        grab_error = str(e)
 
     torrent_option = TorrentOption(
         request_id=album_request.id,
@@ -447,4 +449,5 @@ async def grab_torrent(
         "artist": artist,
         "album": album,
         "cross_seed_status": cross_seed_status,
+        "grab_error": grab_error,
     })
