@@ -276,7 +276,7 @@
     {% if save_failed %}
     Settings saved, but one or more checks failed.
     {% else %}
-    Settings saved and configured checks passed.
+    Settings saved and safe configured checks passed.
     {% endif %}
     {% if save_checks %}
     <div style="display:grid; gap:.35rem; margin-top:.7rem;">
@@ -543,7 +543,7 @@
         </section>
 
         <div class="settings-actions">
-          <span class="settings-muted">Save applies new values and tests every configured service.</span>
+          <span class="settings-muted">Save applies new values and tests safe configured services. Use individual Test buttons for RED/OPS to avoid tracker rate limits.</span>
           <button type="submit"
             class="px-6 py-2.5 rounded-lg text-sm font-semibold text-white transition-colors"
             style="background:var(--purple);">

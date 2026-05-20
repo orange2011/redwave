@@ -1,6 +1,13 @@
+import asyncio
 import unittest
 
+import httpx
+
+from app.config import settings
 from app.services.redacted import (
+    GazelleTrackerClient,
+    TrackerRateLimitError,
+    _TRACKER_BACKOFF_UNTIL,
     media_score_summary,
     normalize_media_preference,
     normalize_quality_profile,
@@ -58,6 +65,38 @@ class RedactedQualityTests(unittest.TestCase):
         self.assertEqual(tracker_client_for("red").label, "RED")
         self.assertEqual(tracker_client_for("ops").label, "OPS")
         self.assertEqual(tracker_client_for("unknown").label, "RED")
+
+    def test_tracker_rate_limit_response_sets_backoff(self):
+        async def run():
+            client = GazelleTrackerClient(
+                tracker="test-red",
+                label="RED",
+                base_url="https://redacted.test/ajax.php",
+                site_url="https://redacted.test",
+                api_key_attr="red_api_key",
+            )
+            old_key = settings.red_api_key
+            object.__setattr__(settings, "red_api_key", "token")
+            _TRACKER_BACKOFF_UNTIL.pop("test-red", None)
+            try:
+                client._client = httpx.AsyncClient(
+                    transport=httpx.MockTransport(
+                        lambda request: httpx.Response(200, json={
+                            "status": "failure",
+                            "error": "Your IP has been temporarily banned.",
+                        })
+                    )
+                )
+                with self.assertRaises(TrackerRateLimitError):
+                    await client.search_torrents("Artist", "Album")
+                with self.assertRaisesRegex(TrackerRateLimitError, "will not retry"):
+                    await client.search_torrents("Artist", "Album")
+            finally:
+                await client._client.aclose()
+                _TRACKER_BACKOFF_UNTIL.pop("test-red", None)
+                object.__setattr__(settings, "red_api_key", old_key)
+
+        asyncio.run(run())
 
 
 if __name__ == "__main__":

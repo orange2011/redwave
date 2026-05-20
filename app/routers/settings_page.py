@@ -1,6 +1,7 @@
 import os
 import re
 import json
+import time
 from pathlib import Path
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, JSONResponse
@@ -9,6 +10,8 @@ from app.config import settings
 
 router = APIRouter()
 ENV_PATH = Path(".env")
+TRACKER_TEST_COOLDOWN_SECONDS = 60 * 60
+_tracker_test_backoff: dict[str, float] = {}
 
 
 def _read_env() -> dict[str, str]:
@@ -200,38 +203,72 @@ async def test_lastfm_secret():
 
 @router.get("/api/settings/test/red")
 async def test_red():
-    import httpx
-    try:
-        r = httpx.get("https://redacted.sh/ajax.php", params={"action": "index"},
-                      headers={"Authorization": settings.red_api_key},
-                      timeout=10, follow_redirects=False)
-        if r.status_code in (301, 302, 303, 307, 308):
-            return JSONResponse({"ok": False, "msg": "Invalid or expired API key (redirect)"})
-        data = r.json()
-        if data.get("status") == "success":
-            u = data.get("response", {}).get("username", "")
-            return JSONResponse({"ok": True, "msg": f"Connected as {u}"})
-        return JSONResponse({"ok": False, "msg": data.get("error", "Unknown error")})
-    except Exception as e:
-        return JSONResponse({"ok": False, "msg": str(e)})
+    return await _test_gazelle_index(
+        key="red",
+        label="RED",
+        url="https://redacted.sh/ajax.php",
+        api_key=settings.red_api_key,
+    )
 
 
 @router.get("/api/settings/test/ops")
 async def test_ops():
+    return await _test_gazelle_index(
+        key="ops",
+        label="OPS",
+        url="https://orpheus.network/ajax.php",
+        api_key=settings.ops_api_key,
+    )
+
+
+async def _test_gazelle_index(key: str, label: str, url: str, api_key: str) -> JSONResponse:
     import httpx
+    if not api_key.strip():
+        return JSONResponse({"ok": False, "msg": f"No {label} API key configured"})
+    cooldown_until = _tracker_test_backoff.get(key, 0)
+    if cooldown_until > time.time():
+        minutes = max(1, round((cooldown_until - time.time()) / 60))
+        return JSONResponse({
+            "ok": False,
+            "msg": f"{label} recently reported a temporary ban/rate limit. Redwave will not retest for about {minutes} minutes.",
+        })
     try:
-        r = httpx.get("https://orpheus.network/ajax.php", params={"action": "index"},
-                      headers={"Authorization": settings.ops_api_key},
+        r = httpx.get(url, params={"action": "index"},
+                      headers={"Authorization": api_key},
                       timeout=10, follow_redirects=False)
         if r.status_code in (301, 302, 303, 307, 308):
-            return JSONResponse({"ok": False, "msg": "Invalid or expired API key (redirect)"})
+            return JSONResponse({"ok": False, "msg": f"{label} API key invalid or expired (redirect)"})
+        body = r.text or ""
+        if _looks_like_tracker_rate_limit(body):
+            _tracker_test_backoff[key] = time.time() + TRACKER_TEST_COOLDOWN_SECONDS
+            return JSONResponse({
+                "ok": False,
+                "msg": f"{label} says your IP is temporarily banned/rate-limited. Stop testing/searching it for a while.",
+            })
         data = r.json()
         if data.get("status") == "success":
             u = data.get("response", {}).get("username", "")
-            return JSONResponse({"ok": True, "msg": f"Connected as {u}"} if u else {"ok": True, "msg": "Connected"})
+            return JSONResponse({"ok": True, "msg": f"Connected as {u}"} if u else {"ok": True, "msg": f"{label} connected"})
+        error = data.get("error", "Unknown error")
+        if _looks_like_tracker_rate_limit(error):
+            _tracker_test_backoff[key] = time.time() + TRACKER_TEST_COOLDOWN_SECONDS
+            return JSONResponse({
+                "ok": False,
+                "msg": f"{label} says your IP is temporarily banned/rate-limited. Stop testing/searching it for a while.",
+            })
         return JSONResponse({"ok": False, "msg": data.get("error", "Unknown error")})
     except Exception as e:
         return JSONResponse({"ok": False, "msg": str(e)})
+
+
+def _looks_like_tracker_rate_limit(value: str) -> bool:
+    value = (value or "").lower()
+    return any(part in value for part in (
+        "temporarily banned",
+        "rate limit",
+        "rate-limit",
+        "too many requests",
+    ))
 
 
 @router.get("/api/settings/test/listenbrainz")
@@ -347,8 +384,6 @@ async def _response_json(response: JSONResponse) -> dict:
 
 async def _run_configured_save_checks(env: dict[str, str]) -> list[dict]:
     checks = [
-        ("RED", ("RED_API_KEY",), test_red),
-        ("OPS", ("OPS_API_KEY",), test_ops),
         ("Last.fm", ("LASTFM_API_KEY", "LASTFM_USERNAME"), test_lastfm),
         ("Last.fm account link", ("LASTFM_SHARED_SECRET",), test_lastfm_secret),
         ("Navidrome", ("NAVIDROME_URL", "NAVIDROME_USER", "NAVIDROME_PASS"), test_navidrome),
@@ -358,6 +393,15 @@ async def _run_configured_save_checks(env: dict[str, str]) -> list[dict]:
         ("qBittorrent", ("QBT_HOST", "QBT_USERNAME", "QBT_PASSWORD"), test_qbittorrent),
     ]
     results = []
+    for label, key in (("RED", "RED_API_KEY"), ("OPS", "OPS_API_KEY")):
+        if (env.get(key) or "").strip():
+            results.append({
+                "label": label,
+                "ok": None,
+                "msg": "Configured. Skipped on Save to avoid tracker rate limits; use Test when you need to verify it.",
+            })
+        else:
+            results.append({"label": label, "ok": None, "msg": "Not configured"})
     for label, keys, fn in checks:
         if not any((env.get(key) or "").strip() for key in keys):
             results.append({"label": label, "ok": None, "msg": "Not configured"})

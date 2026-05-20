@@ -1,4 +1,5 @@
 import re
+import time
 import unicodedata
 
 import httpx
@@ -12,6 +13,14 @@ _TOKEN_ERROR_MESSAGES = (
     "You do not have enough freeleech tokens",
     "This torrent is too large.",
     "You cannot use tokens here",
+)
+TRACKER_RATE_LIMIT_SECONDS = 60 * 60
+_TRACKER_BACKOFF_UNTIL: dict[str, float] = {}
+_TRACKER_RATE_LIMIT_MESSAGES = (
+    "temporarily banned",
+    "rate limit",
+    "rate-limit",
+    "too many requests",
 )
 FREELEECH_TOKEN_MODES = {"never", "preferred", "required"}
 QUALITY_PROFILES = {
@@ -289,6 +298,15 @@ def _has_token_error(content: bytes) -> bool:
     return any(message in text for message in _TOKEN_ERROR_MESSAGES)
 
 
+def _looks_like_tracker_rate_limit(value: str) -> bool:
+    value = (value or "").lower()
+    return any(message in value for message in _TRACKER_RATE_LIMIT_MESSAGES)
+
+
+class TrackerRateLimitError(ValueError):
+    pass
+
+
 class GazelleTrackerClient:
     def __init__(self, tracker: str, label: str, base_url: str, site_url: str, api_key_attr: str):
         self.tracker = tracker
@@ -312,6 +330,34 @@ class GazelleTrackerClient:
     def _sync_auth_header(self):
         self._client.headers["Authorization"] = self.api_key
 
+    def _raise_if_backoff_active(self):
+        cooldown_until = _TRACKER_BACKOFF_UNTIL.get(self.tracker, 0)
+        if cooldown_until > time.time():
+            minutes = max(1, round((cooldown_until - time.time()) / 60))
+            raise TrackerRateLimitError(
+                f"{self.label} recently reported a temporary ban/rate limit. "
+                f"Redwave will not retry for about {minutes} minutes."
+            )
+
+    def _record_backoff(self):
+        _TRACKER_BACKOFF_UNTIL[self.tracker] = time.time() + TRACKER_RATE_LIMIT_SECONDS
+
+    def _response_preview(self, response: httpx.Response) -> str:
+        try:
+            text = response.text
+        except Exception:
+            text = response.content[:512].decode("utf-8", errors="ignore")
+        return (text or "").strip()
+
+    def _raise_if_rate_limited(self, response: httpx.Response):
+        text = self._response_preview(response)
+        if response.status_code == 429 or _looks_like_tracker_rate_limit(text):
+            self._record_backoff()
+            raise TrackerRateLimitError(
+                f"{self.label} reported a temporary ban/rate limit. "
+                "Stop testing/searching it for a while; Redwave is backing off automatically."
+            )
+
     def group_url(self, group_id: int | str | None) -> str:
         return f"{self.SITE_URL}/torrents.php?id={group_id}" if group_id else self.SITE_URL
 
@@ -319,6 +365,7 @@ class GazelleTrackerClient:
         if not self.is_configured():
             return []
         self._sync_auth_header()
+        self._raise_if_backoff_active()
         results = []
         seen_group_ids = set()
 
@@ -330,9 +377,16 @@ class GazelleTrackerClient:
             })
             if r.status_code in (301, 302, 303, 307, 308):
                 raise ValueError(f"{self.label} API key invalid or expired.")
+            self._raise_if_rate_limited(r)
             r.raise_for_status()
             data = r.json()
             if data.get("status") != "success":
+                if _looks_like_tracker_rate_limit(data.get("error", "")):
+                    self._record_backoff()
+                    raise TrackerRateLimitError(
+                        f"{self.label} reported a temporary ban/rate limit. "
+                        "Stop testing/searching it for a while; Redwave is backing off automatically."
+                    )
                 continue
 
             for group in data.get("response", {}).get("results", []):
@@ -356,6 +410,7 @@ class GazelleTrackerClient:
         if not self.is_configured():
             raise ValueError(f"{self.label} API key is not configured.")
         self._sync_auth_header()
+        self._raise_if_backoff_active()
         token_mode = normalize_token_mode(token_mode or settings.red_use_freeleech_token)
         params = {
             "action": "download",
@@ -364,6 +419,7 @@ class GazelleTrackerClient:
         if self.tracker == "red":
             params["usetoken"] = 1 if use_token else 0
         r = await self._client.get(self.BASE_URL, params=params)
+        self._raise_if_rate_limited(r)
         r.raise_for_status()
         content = r.content
 
@@ -373,6 +429,7 @@ class GazelleTrackerClient:
                 "id": torrent_id,
                 "usetoken": 0,
             })
+            self._raise_if_rate_limited(r)
             r.raise_for_status()
             return r.content
 
@@ -385,10 +442,12 @@ class GazelleTrackerClient:
         if not self.is_configured():
             return {}
         self._sync_auth_header()
+        self._raise_if_backoff_active()
         r = await self._client.get(self.BASE_URL, params={
             "action": "torrent",
             "id": torrent_id,
         })
+        self._raise_if_rate_limited(r)
         r.raise_for_status()
         data = r.json()
         return data.get("response", {})
@@ -397,13 +456,21 @@ class GazelleTrackerClient:
         if not self.is_configured():
             return {}
         self._sync_auth_header()
+        self._raise_if_backoff_active()
         r = await self._client.get(self.BASE_URL, params={
             "action": "torrentgroup",
             "id": group_id,
         })
+        self._raise_if_rate_limited(r)
         r.raise_for_status()
         data = r.json()
         if data.get("status") != "success":
+            if _looks_like_tracker_rate_limit(data.get("error", "")):
+                self._record_backoff()
+                raise TrackerRateLimitError(
+                    f"{self.label} reported a temporary ban/rate limit. "
+                    "Stop testing/searching it for a while; Redwave is backing off automatically."
+                )
             raise ValueError(data.get("error", "RED torrent group lookup failed"))
         return data.get("response", {})
 
@@ -418,10 +485,18 @@ class GazelleTrackerClient:
             params["artistname"] = artist_name
         else:
             return {}
+        self._raise_if_backoff_active()
         r = await self._client.get(self.BASE_URL, params=params)
+        self._raise_if_rate_limited(r)
         r.raise_for_status()
         data = r.json()
         if data.get("status") != "success":
+            if _looks_like_tracker_rate_limit(data.get("error", "")):
+                self._record_backoff()
+                raise TrackerRateLimitError(
+                    f"{self.label} reported a temporary ban/rate limit. "
+                    "Stop testing/searching it for a while; Redwave is backing off automatically."
+                )
             raise ValueError(data.get("error", "RED artist lookup failed"))
         return data.get("response", {})
 
