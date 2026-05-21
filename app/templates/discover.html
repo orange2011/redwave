@@ -93,6 +93,89 @@
   .genre-tabs {
     margin-bottom: 1.1rem;
   }
+  .genre-toolbar {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(16rem, 24rem);
+    gap: 0.85rem;
+    align-items: start;
+    margin-bottom: 1.1rem;
+  }
+  .genre-toolbar .genre-tabs {
+    margin-bottom: 0;
+  }
+  .custom-genre-form {
+    display: grid;
+    grid-template-columns: minmax(12rem, 18rem) auto;
+    gap: 0.45rem;
+    align-items: center;
+  }
+  .custom-genre-form input {
+    min-height: 2rem;
+  }
+  .custom-genre-form button {
+    min-height: 2rem;
+    border-radius: 8px;
+    background: var(--purple);
+    color: #fff;
+    padding: 0 0.78rem;
+    font-size: 0.76rem;
+    font-weight: 850;
+  }
+  .tag-group {
+    min-width: 0;
+    display: grid;
+    gap: 0.45rem;
+  }
+  .tag-group-title {
+    color: var(--muted);
+    font-size: 0.68rem;
+    font-weight: 900;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+  .personal-tag-count {
+    display: none;
+  }
+  .preset-tags {
+    margin-top: 0.15rem;
+  }
+  .preset-tags summary {
+    width: max-content;
+    max-width: 100%;
+    min-height: 2rem;
+    display: inline-flex;
+    align-items: center;
+    border-radius: 999px;
+    border: 1px solid var(--border-soft);
+    background: var(--panel-soft);
+    color: var(--text-soft);
+    padding: 0 0.82rem;
+    font-size: 0.76rem;
+    font-weight: 850;
+    cursor: pointer;
+    list-style: none;
+  }
+  .preset-tags summary::-webkit-details-marker {
+    display: none;
+  }
+  .preset-tags summary:hover {
+    color: var(--text);
+    background: var(--panel-hover);
+    border-color: var(--border);
+  }
+  .preset-tags summary::after {
+    content: "+";
+    color: var(--subtle);
+    margin-left: 0.45rem;
+    font-size: 0.88rem;
+    line-height: 1;
+  }
+  .preset-tags[open] summary::after {
+    content: "-";
+  }
+  .preset-tags[open] .genre-tabs {
+    margin-top: 0.52rem;
+  }
   .discover-layout {
     display: grid;
     grid-template-columns: minmax(0, 1.32fr) minmax(20rem, 0.68fr);
@@ -359,6 +442,10 @@
     .genre-tabs::-webkit-scrollbar {
       display: none;
     }
+    .genre-toolbar,
+    .custom-genre-form {
+      grid-template-columns: 1fr;
+    }
   }
 </style>
 {% endblock %}
@@ -406,11 +493,37 @@
   </header>
 
   {% if mode == "genres" %}
-  <nav class="genre-tabs" aria-label="Genres">
-    {% for genre in genres %}
-    <a href="/discover/genres?genre={{ genre | urlencode }}" class="genre-tab {{ 'active' if genre == active_genre else '' }}">{{ genre }}</a>
-    {% endfor %}
-  </nav>
+  <div class="genre-toolbar">
+    <div class="tag-group">
+      {% if user_top_tags %}
+      <div class="tag-group-title">Your Most Listened Tags</div>
+      <nav class="genre-tabs" aria-label="Your most listened tags">
+        {% for tag in user_top_tags[:8] %}
+        <a href="/discover/genres?genre={{ tag.name | urlencode }}" class="genre-tab {{ 'active' if genre_slug(tag.name) == genre_slug(active_genre) else '' }}" title="{{ tag.count }} tag score">
+          {{ tag.name }}{% if tag.count %}<span class="personal-tag-count">{{ tag.count }}</span>{% endif %}
+        </a>
+        {% endfor %}
+      </nav>
+      {% endif %}
+
+      <details class="preset-tags">
+        <summary>Browse Preset Tags</summary>
+        <nav class="genre-tabs" aria-label="Genres">
+          {% for genre in genres %}
+          <a href="/discover/genres?genre={{ genre | urlencode }}" class="genre-tab {{ 'active' if genre == active_genre else '' }}">{{ genre }}</a>
+          {% endfor %}
+          {% if active_genre and active_genre not in genres and not active_in_user_tags %}
+          <a href="/discover/genres?genre={{ active_genre | urlencode }}" class="genre-tab active">{{ active_genre }}</a>
+          {% endif %}
+        </nav>
+      </details>
+    </div>
+    <form method="get" action="/discover/genres" class="custom-genre-form">
+      <input type="text" name="genre" value="{{ active_genre if active_genre not in genres else '' }}" placeholder="Any Last.fm tag..."
+        class="w-full bg-white border border-gray-300 text-gray-900 placeholder-gray-400 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent">
+      <button type="submit">Search Tag</button>
+    </form>
+  </div>
 
   <div class="discover-layout">
     <section class="discover-section">

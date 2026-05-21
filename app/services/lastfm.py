@@ -1,4 +1,5 @@
 import asyncio
+from collections import Counter
 import httpx
 from app.config import settings
 from app.utils import normalize_album
@@ -615,6 +616,98 @@ class LastFmClient:
             if len(out) >= limit:
                 break
         return await self.enrich_tracks_with_covers(out)
+
+    async def get_user_top_tags(self, limit: int = 18) -> list[dict]:
+        if not settings.lastfm_username.strip() or not settings.lastfm_api_key.strip():
+            return []
+        try:
+            r = await self._client.get(self.BASE_URL, params={
+                "method": "user.getTopTags",
+                "user": settings.lastfm_username,
+                "api_key": settings.lastfm_api_key,
+                "format": "json",
+                "limit": limit * 2,
+            })
+            if not r.is_success:
+                return []
+        except Exception:
+            return []
+
+        tags = r.json().get("toptags", {}).get("tag", [])
+        out = []
+        seen = set()
+        for index, tag in enumerate(tags, 1):
+            name = (tag.get("name") or "").strip()
+            if not name:
+                continue
+            key = name.lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            out.append({
+                "name": name,
+                "count": tag.get("count", 0),
+                "rank": index,
+            })
+            if len(out) >= limit:
+                break
+        if out:
+            return out
+
+        return await self._derive_user_top_tags(limit=limit)
+
+    async def _derive_user_top_tags(self, limit: int = 18) -> list[dict]:
+        """Infer personal tags from top artists when Last.fm has no user tag history."""
+        try:
+            r = await self._client.get(self.BASE_URL, params={
+                "method": "user.gettopartists",
+                "user": settings.lastfm_username,
+                "api_key": settings.lastfm_api_key,
+                "format": "json",
+                "period": "overall",
+                "limit": max(12, min(limit * 2, 40)),
+            })
+            if not r.is_success:
+                return []
+            artists = r.json().get("topartists", {}).get("artist", [])
+        except Exception:
+            return []
+
+        artist_names = [(artist.get("name") or "").strip() for artist in artists]
+        artist_names = [name for name in artist_names if name]
+        if not artist_names:
+            return []
+
+        artist_infos = await asyncio.gather(*[
+            self.get_artist_info(name) for name in artist_names
+        ])
+
+        scores: Counter[str] = Counter()
+        display_names: dict[str, str] = {}
+        for artist, info in zip(artists, artist_infos):
+            if not info:
+                continue
+            try:
+                playcount = int(artist.get("playcount") or 0)
+            except (TypeError, ValueError):
+                playcount = 1
+            weight = max(playcount, 1)
+            for tag_index, tag in enumerate(info.get("tags", [])[:6], 1):
+                name = (tag or "").strip()
+                if not name:
+                    continue
+                key = name.lower()
+                display_names.setdefault(key, name)
+                scores[key] += max(weight // tag_index, 1)
+
+        return [
+            {
+                "name": display_names[key],
+                "count": score,
+                "rank": index,
+            }
+            for index, (key, score) in enumerate(scores.most_common(limit), 1)
+        ]
 
     async def get_recent_tracks(self, limit: int = 10) -> list[dict]:
         r = await self._client.get(self.BASE_URL, params={

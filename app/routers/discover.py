@@ -21,6 +21,7 @@ router = APIRouter(prefix="/discover")
 
 _genre_cache: dict[str, dict] = {}
 _gap_cache: dict[tuple, dict] = {}
+_user_tag_cache: dict[str, dict] = {}
 _GENRE_TTL = timedelta(hours=6)
 _GAP_TTL = timedelta(hours=4)
 
@@ -33,6 +34,7 @@ def _collection_signature(collection: list[dict]) -> str:
 def _clear_discover_caches() -> None:
     _genre_cache.clear()
     _gap_cache.clear()
+    _user_tag_cache.clear()
 
 
 async def _genre_charts(genre: str) -> tuple[list[dict], list[dict]]:
@@ -51,6 +53,20 @@ async def _genre_charts(genre: str) -> tuple[list[dict], list[dict]]:
         "expires": now + _GENRE_TTL,
     }
     return albums, tracks
+
+
+async def _user_top_tags() -> list[dict]:
+    now = datetime.now()
+    cached = _user_tag_cache.get("top")
+    if cached and now < cached["expires"]:
+        return cached["tags"]
+
+    tags = await lastfm_client.get_user_top_tags(limit=18)
+    _user_tag_cache["top"] = {
+        "tags": tags,
+        "expires": now + _GENRE_TTL,
+    }
+    return tags
 
 
 async def _library_gap_groups(
@@ -109,12 +125,15 @@ async def discover_genres(
     genre: str = Query(default="metal"),
 ):
     active_genre = coerce_genre(genre)
-    collection, charts = await asyncio.gather(
+    collection, charts, user_top_tags = await asyncio.gather(
         get_collection(),
         _genre_charts(active_genre),
+        _user_top_tags(),
     )
     owned_keys = collection_keys(collection)
     albums, tracks = charts
+    active_slug = genre_slug(active_genre)
+    active_in_user_tags = any(genre_slug(tag.get("name", "")) == active_slug for tag in user_top_tags)
 
     return templates.TemplateResponse("discover.html", {
         "request": request,
@@ -122,6 +141,8 @@ async def discover_genres(
         "genres": GENRE_PRESETS,
         "genre_slug": genre_slug,
         "active_genre": active_genre,
+        "active_in_user_tags": active_in_user_tags,
+        "user_top_tags": user_top_tags,
         "genre_albums": mark_collection(albums, owned_keys),
         "genre_tracks": tracks,
         "gap_groups": [],
@@ -151,6 +172,8 @@ async def discover_library(
         "genres": GENRE_PRESETS,
         "genre_slug": genre_slug,
         "active_genre": "",
+        "active_in_user_tags": False,
+        "user_top_tags": [],
         "genre_albums": [],
         "genre_tracks": [],
         "gap_groups": gap_groups,
