@@ -13,6 +13,56 @@ ENV_PATH = Path(".env")
 TRACKER_TEST_COOLDOWN_SECONDS = 60 * 60
 _tracker_test_backoff: dict[str, float] = {}
 
+SETTINGS_ENV_TO_ATTR = {
+    "RED_API_KEY": "red_api_key",
+    "RED_USE_FREELEECH_TOKEN": "red_use_freeleech_token",
+    "RED_QUALITY_PROFILE": "red_quality_profile",
+    "RED_MEDIA_PREFERENCE": "red_media_preference",
+    "RED_MEDIA_SCORE_CD": "red_media_score_cd",
+    "RED_MEDIA_SCORE_WEB": "red_media_score_web",
+    "RED_MEDIA_SCORE_VINYL": "red_media_score_vinyl",
+    "RED_MEDIA_SCORE_CASSETTE": "red_media_score_cassette",
+    "RED_MEDIA_SCORE_SACD": "red_media_score_sacd",
+    "RED_MEDIA_SCORE_BLU_RAY": "red_media_score_blu_ray",
+    "RED_MEDIA_SCORE_DVD": "red_media_score_dvd",
+    "RED_MEDIA_SCORE_SOUNDBOARD": "red_media_score_soundboard",
+    "OPS_API_KEY": "ops_api_key",
+    "LASTFM_API_KEY": "lastfm_api_key",
+    "LASTFM_SHARED_SECRET": "lastfm_shared_secret",
+    "LASTFM_SESSION_KEY": "lastfm_session_key",
+    "LASTFM_USERNAME": "lastfm_username",
+    "LISTENBRAINZ_TOKEN": "listenbrainz_token",
+    "LISTENBRAINZ_USERNAME": "listenbrainz_username",
+    "DISCOGS_TOKEN": "discogs_token",
+    "QBT_HOST": "qbt_host",
+    "QBT_USERNAME": "qbt_username",
+    "QBT_PASSWORD": "qbt_password",
+    "QBT_CATEGORY": "qbt_category",
+    "QBT_RED_TAG": "qbt_red_tag",
+    "QBT_OPS_TAG": "qbt_ops_tag",
+    "OPS_CROSS_SEED": "ops_cross_seed",
+    "MUSIC_DIR": "music_dir",
+    "NAVIDROME_URL": "navidrome_url",
+    "NAVIDROME_USER": "navidrome_user",
+    "NAVIDROME_PASS": "navidrome_pass",
+    "APP_THEME": "app_theme",
+}
+
+SETTINGS_FORM_FIELDS = [
+    "RED_API_KEY", "RED_USE_FREELEECH_TOKEN", "RED_QUALITY_PROFILE",
+    "OPS_API_KEY",
+    "RED_MEDIA_SCORE_CD", "RED_MEDIA_SCORE_WEB", "RED_MEDIA_SCORE_VINYL", "RED_MEDIA_SCORE_CASSETTE",
+    "RED_MEDIA_SCORE_SACD", "RED_MEDIA_SCORE_BLU_RAY", "RED_MEDIA_SCORE_DVD", "RED_MEDIA_SCORE_SOUNDBOARD",
+    "LASTFM_API_KEY", "LASTFM_SHARED_SECRET", "LASTFM_USERNAME",
+    "NAVIDROME_URL", "NAVIDROME_USER", "NAVIDROME_PASS",
+    "LISTENBRAINZ_TOKEN", "DISCOGS_TOKEN",
+    "QBT_HOST", "QBT_USERNAME", "QBT_PASSWORD", "QBT_CATEGORY",
+    "QBT_RED_TAG", "QBT_OPS_TAG", "OPS_CROSS_SEED",
+    "MUSIC_DIR",
+    "LISTENBRAINZ_USERNAME",
+    "APP_THEME",
+]
+
 
 def _read_env() -> dict[str, str]:
     result = {}
@@ -74,54 +124,23 @@ def _write_env(data: dict[str, str], remove_keys: set[str] | None = None):
 
 def _reload_settings(data: dict[str, str]):
     """Apply saved values to the live settings object."""
-    mapping = {
-        "RED_API_KEY": "red_api_key",
-        "RED_USE_FREELEECH_TOKEN": "red_use_freeleech_token",
-        "RED_QUALITY_PROFILE": "red_quality_profile",
-        "RED_MEDIA_PREFERENCE": "red_media_preference",
-        "RED_MEDIA_SCORE_CD": "red_media_score_cd",
-        "RED_MEDIA_SCORE_WEB": "red_media_score_web",
-        "RED_MEDIA_SCORE_VINYL": "red_media_score_vinyl",
-        "RED_MEDIA_SCORE_CASSETTE": "red_media_score_cassette",
-        "RED_MEDIA_SCORE_SACD": "red_media_score_sacd",
-        "RED_MEDIA_SCORE_BLU_RAY": "red_media_score_blu_ray",
-        "RED_MEDIA_SCORE_DVD": "red_media_score_dvd",
-        "RED_MEDIA_SCORE_SOUNDBOARD": "red_media_score_soundboard",
-        "OPS_API_KEY": "ops_api_key",
-        "LASTFM_API_KEY": "lastfm_api_key",
-        "LASTFM_SHARED_SECRET": "lastfm_shared_secret",
-        "LASTFM_SESSION_KEY": "lastfm_session_key",
-        "LASTFM_USERNAME": "lastfm_username",
-        "LISTENBRAINZ_TOKEN": "listenbrainz_token",
-        "LISTENBRAINZ_USERNAME": "listenbrainz_username",
-        "DISCOGS_TOKEN": "discogs_token",
-        "QBT_HOST": "qbt_host",
-        "QBT_USERNAME": "qbt_username",
-        "QBT_PASSWORD": "qbt_password",
-        "QBT_CATEGORY": "qbt_category",
-        "QBT_RED_TAG": "qbt_red_tag",
-        "QBT_OPS_TAG": "qbt_ops_tag",
-        "OPS_CROSS_SEED": "ops_cross_seed",
-        "MUSIC_DIR": "music_dir",
-        "NAVIDROME_URL": "navidrome_url",
-        "NAVIDROME_USER": "navidrome_user",
-        "NAVIDROME_PASS": "navidrome_pass",
-        "APP_THEME": "app_theme",
-    }
-    for env_key, attr in mapping.items():
+    for env_key, attr in SETTINGS_ENV_TO_ATTR.items():
         if env_key in data:
             object.__setattr__(settings, attr, data[env_key])
 
 
+def _env_with_live_settings_defaults() -> dict[str, str]:
+    env = _read_env()
+    for env_key, attr in SETTINGS_ENV_TO_ATTR.items():
+        value = getattr(settings, attr, "")
+        if value not in (None, ""):
+            env.setdefault(env_key, str(value))
+    return env
+
+
 @router.get("/settings", response_class=HTMLResponse)
 async def settings_page(request: Request):
-    env = _read_env()
-    env.setdefault("RED_QUALITY_PROFILE", settings.red_quality_profile)
-    env.setdefault("RED_USE_FREELEECH_TOKEN", settings.red_use_freeleech_token)
-    env.setdefault("APP_THEME", settings.app_theme)
-    env.setdefault("QBT_RED_TAG", settings.qbt_red_tag)
-    env.setdefault("QBT_OPS_TAG", settings.qbt_ops_tag)
-    env.setdefault("OPS_CROSS_SEED", settings.ops_cross_seed)
+    env = _env_with_live_settings_defaults()
     from app.services.redacted import media_score_options
     media_scores = media_score_options()
     for item in media_scores:
@@ -140,24 +159,10 @@ async def settings_page(request: Request):
 async def save_settings(request: Request):
     form = await request.form()
     env = _read_env()
-    fields = [
-        "RED_API_KEY", "RED_USE_FREELEECH_TOKEN", "RED_QUALITY_PROFILE",
-        "OPS_API_KEY",
-        "RED_MEDIA_SCORE_CD", "RED_MEDIA_SCORE_WEB", "RED_MEDIA_SCORE_VINYL", "RED_MEDIA_SCORE_CASSETTE",
-        "RED_MEDIA_SCORE_SACD", "RED_MEDIA_SCORE_BLU_RAY", "RED_MEDIA_SCORE_DVD", "RED_MEDIA_SCORE_SOUNDBOARD",
-        "LASTFM_API_KEY", "LASTFM_SHARED_SECRET", "LASTFM_USERNAME",
-        "NAVIDROME_URL", "NAVIDROME_USER", "NAVIDROME_PASS",
-        "LISTENBRAINZ_TOKEN", "DISCOGS_TOKEN",
-        "QBT_HOST", "QBT_USERNAME", "QBT_PASSWORD", "QBT_CATEGORY",
-        "QBT_RED_TAG", "QBT_OPS_TAG", "OPS_CROSS_SEED",
-        "MUSIC_DIR",
-        "LISTENBRAINZ_USERNAME",
-        "APP_THEME",
-    ]
     removed_keys = {"LIDARR_URL", "LIDARR_API_KEY"}
     for removed in removed_keys:
         env.pop(removed, None)
-    for f in fields:
+    for f in SETTINGS_FORM_FIELDS:
         val = form.get(f, "").strip()
         if f == "APP_THEME" and val not in {"redwave", "black", "light"}:
             val = "redwave"

@@ -91,6 +91,28 @@ class SettingsTests(unittest.TestCase):
         self.assertNotIn("LIDARR_URL", text)
         self.assertIn("LIDARR_URL=http://old", backup)
 
+    def test_settings_page_uses_live_settings_when_env_file_is_sparse(self):
+        old_path = settings_page.ENV_PATH
+        old_theme = settings.app_theme
+        old_navidrome = settings.navidrome_url
+        old_qbt = settings.qbt_host
+        with tempfile.TemporaryDirectory() as tmp:
+            settings_page.ENV_PATH = Path(tmp) / ".env"
+            object.__setattr__(settings, "app_theme", "black")
+            object.__setattr__(settings, "navidrome_url", "http://navidrome:4533")
+            object.__setattr__(settings, "qbt_host", "http://qbittorrent:8080")
+            try:
+                env = settings_page._env_with_live_settings_defaults()
+            finally:
+                settings_page.ENV_PATH = old_path
+                object.__setattr__(settings, "app_theme", old_theme)
+                object.__setattr__(settings, "navidrome_url", old_navidrome)
+                object.__setattr__(settings, "qbt_host", old_qbt)
+
+        self.assertEqual(env["APP_THEME"], "black")
+        self.assertEqual(env["NAVIDROME_URL"], "http://navidrome:4533")
+        self.assertEqual(env["QBT_HOST"], "http://qbittorrent:8080")
+
     def test_tracker_rate_limit_detection(self):
         self.assertTrue(settings_page._looks_like_tracker_rate_limit("Your IP has been temporarily banned."))
         self.assertTrue(settings_page._looks_like_tracker_rate_limit("Too many requests"))
