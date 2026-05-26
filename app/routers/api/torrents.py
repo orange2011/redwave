@@ -26,7 +26,7 @@ from app.models.request import AlbumRequest, TorrentOption
 from app.database import get_db
 from app.utils import normalize_album, normalize_artist
 from app.config import settings
-from app.services.torrent_meta import TorrentManifest, manifests_payload_compatible, parse_torrent_manifest
+from app.services.torrent_meta import TorrentManifest, compare_torrent_payloads, parse_torrent_manifest
 
 router = APIRouter(prefix="/api")
 
@@ -47,7 +47,7 @@ def _fmt_size(b: int) -> str:
 
 _TOKEN_RE = re.compile(r"[a-z0-9]+")
 _STRICT_TEXT_RE = re.compile(r"[\w]+", re.UNICODE)
-OPS_CROSS_SEED_MATCH_POLICY = "strict-exact-v1"
+OPS_CROSS_SEED_MATCH_POLICY = "payload-map-v2"
 
 
 def _match_text(value: str) -> str:
@@ -312,9 +312,11 @@ async def _find_ops_cross_seed_match(
             ops_manifest = parse_torrent_manifest(ops_torrent_bytes)
         except Exception:
             continue
-        if not manifests_payload_compatible(selected_manifest, ops_manifest):
+        payload_match = compare_torrent_payloads(selected_manifest, ops_manifest)
+        if not payload_match.compatible:
             continue
         row["torrent_manifest"] = ops_manifest.to_dict()
+        row["payload_match"] = payload_match.to_dict()
         return row
     return None
 
@@ -492,6 +494,8 @@ async def grab_torrent(
                             "title": ops_match.get("title", ""),
                             "size_bytes": ops_match.get("size_bytes", 0),
                             "match_policy": OPS_CROSS_SEED_MATCH_POLICY,
+                            "match_mode": (ops_match.get("payload_match") or {}).get("match_mode", "exact"),
+                            "rename_map": (ops_match.get("payload_match") or {}).get("rename_map", {}),
                             "torrent_manifest": ops_match.get("torrent_manifest"),
                         }
                     }

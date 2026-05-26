@@ -324,6 +324,59 @@ class TorrentPickerTests(unittest.TestCase):
 
         self.assertIsNone(match)
 
+    def test_ops_cross_seed_returns_rename_map_for_same_payload_different_paths(self):
+        old_value = settings.ops_cross_seed
+        object.__setattr__(settings, "ops_cross_seed", "1")
+        selected_bytes = _torrent_bytes("Red Root", [
+            ("01 Track.flac", 100),
+            ("02 Track.flac", 200),
+        ], pieces=b"z" * 20)
+        ops_bytes = _torrent_bytes("Ops Root", [
+            ("01 - Track.flac", 100),
+            ("02 - Track.flac", 200),
+        ], pieces=b"z" * 20)
+        fake_ops = type("FakeOps", (), {})()
+        fake_ops.is_configured = lambda: True
+        fake_ops.get_torrent_file = AsyncMock(return_value=ops_bytes)
+        fake_ops.search_torrents = AsyncMock(return_value=[
+            {
+                "artist": "Deary",
+                "groupName": "Birding",
+                "groupYear": "2024",
+                "groupId": 31,
+                "_redwave_tracker": "ops",
+                "_redwave_tracker_label": "OPS",
+                "torrents": [
+                    {"torrentId": 12, "format": "FLAC", "encoding": "Lossless", "media": "WEB", "size": 300},
+                ],
+            }
+        ])
+        try:
+            with patch("app.routers.api.torrents.ops_client", fake_ops):
+                match = asyncio.run(_find_ops_cross_seed_match(
+                    "Deary",
+                    "Birding",
+                    "2024",
+                    300,
+                    "never",
+                    "flac_any",
+                    {"WEB": 50},
+                    selected_format="FLAC",
+                    selected_encoding="Lossless",
+                    selected_media="WEB",
+                    selected_manifest=parse_torrent_manifest(selected_bytes),
+                ))
+        finally:
+            object.__setattr__(settings, "ops_cross_seed", old_value)
+
+        self.assertIsNotNone(match)
+        self.assertEqual(match["torrent_id"], 12)
+        self.assertEqual(match["payload_match"]["match_mode"], "mapped-paths")
+        self.assertEqual(match["payload_match"]["rename_map"], {
+            "01 - Track.flac": "01 Track.flac",
+            "02 - Track.flac": "02 Track.flac",
+        })
+
 
 if __name__ == "__main__":
     unittest.main()
