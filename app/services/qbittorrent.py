@@ -106,12 +106,28 @@ class QBittorrentClient:
 
         raise QBittorrentError(f"Torrent add failed (HTTP {response.status_code}: {body or 'empty response'}).")
 
-    async def add_torrent_with_result(self, torrent_bytes: bytes, tags: list[str] | None = None) -> QBittorrentAddResult:
+    async def add_torrent_with_result(
+        self,
+        torrent_bytes: bytes,
+        tags: list[str] | None = None,
+        save_path: str = "",
+        content_layout: str = "",
+        skip_checking: bool | None = None,
+        paused: bool | None = None,
+    ) -> QBittorrentAddResult:
         base_url = qbt_base_url()
         data = {"category": settings.qbt_category}
         clean_tags = [tag.strip() for tag in (tags or []) if tag and tag.strip()]
         if clean_tags:
             data["tags"] = ",".join(clean_tags)
+        if save_path:
+            data["savepath"] = save_path
+        if content_layout:
+            data["contentLayout"] = content_layout
+        if skip_checking is not None:
+            data["skip_checking"] = "true" if skip_checking else "false"
+        if paused is not None:
+            data["paused"] = "true" if paused else "false"
         async with httpx.AsyncClient(timeout=10.0, headers=_qbt_headers(base_url)) as client:
             await self.login(client, base_url)
             await self.ensure_category(client, base_url)
@@ -120,8 +136,23 @@ class QBittorrentClient:
             }, data=data)
         return self.parse_add_response(response)
 
-    async def add_torrent(self, torrent_bytes: bytes, tags: list[str] | None = None) -> bool:
-        return bool(await self.add_torrent_with_result(torrent_bytes, tags=tags))
+    async def add_torrent(
+        self,
+        torrent_bytes: bytes,
+        tags: list[str] | None = None,
+        save_path: str = "",
+        content_layout: str = "",
+        skip_checking: bool | None = None,
+        paused: bool | None = None,
+    ) -> bool:
+        return bool(await self.add_torrent_with_result(
+            torrent_bytes,
+            tags=tags,
+            save_path=save_path,
+            content_layout=content_layout,
+            skip_checking=skip_checking,
+            paused=paused,
+        ))
 
     async def ensure_category(self, client: httpx.AsyncClient, base_url: str) -> None:
         category = (settings.qbt_category or "").strip()

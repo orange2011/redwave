@@ -7,6 +7,7 @@ from app.database import AsyncSessionLocal
 from app.models.request import AlbumRequest, TorrentOption
 from app.services.qbittorrent import qbt_client
 from app.services.redacted import ops_client
+from app.services.torrent_meta import TorrentManifest, manifests_payload_compatible, parse_torrent_manifest
 
 
 COMPLETED_STATES = {
@@ -19,6 +20,7 @@ COMPLETED_STATES = {
     "stalledUP",
     "checkingUP",
 }
+OPS_CROSS_SEED_MATCH_POLICY = "strict-exact-v1"
 
 
 def _truthy(value: str | bool | None) -> bool:
@@ -56,7 +58,15 @@ def _is_completed_state(state: str | None) -> bool:
     return (state or "") in COMPLETED_STATES
 
 
-async def _add_pending_ops_cross_seed(option: TorrentOption | None) -> bool:
+def _cross_seed_save_path(completed_torrent: dict | None, manifest: TorrentManifest | None) -> str:
+    if not completed_torrent or not manifest:
+        return ""
+    if manifest.file_count > 1:
+        return (completed_torrent.get("content_path") or "").strip()
+    return (completed_torrent.get("save_path") or "").strip()
+
+
+async def _add_pending_ops_cross_seed(option: TorrentOption | None, completed_torrent: dict | None = None) -> bool:
     if not option or not _truthy(settings.ops_cross_seed):
         return False
     try:
@@ -66,6 +76,12 @@ async def _add_pending_ops_cross_seed(option: TorrentOption | None) -> bool:
 
     ops = (payload.get("cross_seed") or {}).get("ops") or {}
     if ops.get("status") != "pending":
+        return False
+    if ops.get("match_policy") != OPS_CROSS_SEED_MATCH_POLICY:
+        ops["status"] = "skipped"
+        ops["error"] = "cross-seed was queued before strict match validation"
+        payload.setdefault("cross_seed", {})["ops"] = ops
+        option.raw_json = json.dumps(payload)
         return False
 
     torrent_id = ops.get("torrent_id")
@@ -78,8 +94,31 @@ async def _add_pending_ops_cross_seed(option: TorrentOption | None) -> bool:
 
     try:
         torrent_bytes = await ops_client.get_torrent_file(int(torrent_id), use_token=False)
-        success = await qbt_client.add_torrent(torrent_bytes, tags=[settings.qbt_ops_tag])
-        ops["status"] = "added" if success else "failed"
+        ops_manifest = parse_torrent_manifest(torrent_bytes)
+        red_manifest = TorrentManifest.from_dict((payload.get("selected") or {}).get("torrent_manifest"))
+        queued_manifest = TorrentManifest.from_dict(ops.get("torrent_manifest"))
+        if not (
+            manifests_payload_compatible(red_manifest, ops_manifest)
+            and manifests_payload_compatible(queued_manifest, ops_manifest)
+        ):
+            ops["status"] = "skipped"
+            ops["error"] = "OPS torrent payload no longer matches the selected RED torrent"
+        else:
+            save_path = _cross_seed_save_path(completed_torrent, red_manifest)
+            if not save_path:
+                ops["status"] = "failed"
+                ops["error"] = "missing completed RED content path for cross-seed"
+            else:
+                add_result = await qbt_client.add_torrent_with_result(
+                    torrent_bytes,
+                    tags=[settings.qbt_ops_tag],
+                    save_path=save_path,
+                    content_layout="NoSubfolder" if red_manifest and red_manifest.file_count > 1 else "Original",
+                    skip_checking=False,
+                )
+                ops["status"] = "added" if add_result else "failed"
+                if add_result and add_result.hashes:
+                    ops["qbt_hash"] = add_result.hashes[0]
     except Exception as exc:
         ops["status"] = "failed"
         ops["error"] = str(exc)[:200]
@@ -121,6 +160,6 @@ async def poll_active_downloads():
                     selected = None
                     if req.selected_torrent_id:
                         selected = await db.get(TorrentOption, req.selected_torrent_id)
-                    await _add_pending_ops_cross_seed(selected)
+                    await _add_pending_ops_cross_seed(selected, t)
 
         await db.commit()

@@ -1,6 +1,9 @@
+import asyncio
+import json
 import unittest
 
-from app.tasks.status_poller import _find_by_hash, _is_completed_state, _merge_torrents
+from app.config import settings
+from app.tasks.status_poller import _add_pending_ops_cross_seed, _find_by_hash, _is_completed_state, _merge_torrents
 
 
 class StatusPollerTests(unittest.TestCase):
@@ -25,6 +28,29 @@ class StatusPollerTests(unittest.TestCase):
         )
 
         self.assertEqual([torrent["name"] for torrent in merged], ["From category", "From all"])
+
+    def test_legacy_pending_ops_cross_seed_is_skipped(self):
+        old_value = settings.ops_cross_seed
+        object.__setattr__(settings, "ops_cross_seed", "1")
+        option = type("Option", (), {
+            "raw_json": json.dumps({
+                "tracker": "red",
+                "cross_seed": {
+                    "ops": {
+                        "status": "pending",
+                        "torrent_id": 123,
+                    }
+                },
+            })
+        })()
+        try:
+            added = asyncio.run(_add_pending_ops_cross_seed(option))
+        finally:
+            object.__setattr__(settings, "ops_cross_seed", old_value)
+
+        payload = json.loads(option.raw_json)
+        self.assertFalse(added)
+        self.assertEqual(payload["cross_seed"]["ops"]["status"], "skipped")
 
 
 if __name__ == "__main__":
