@@ -509,7 +509,7 @@
                 {{ field("QBT_CATEGORY", "Torrent Category", env, placeholder="music") }}
                 {{ field("QBT_RED_TAG", "RED Tag", env, placeholder="RED") }}
                 {{ field("QBT_OPS_TAG", "OPS Tag", env, placeholder="OPS") }}
-                {{ checkbox_field("OPS_CROSS_SEED", "Add OPS cross-seed after RED completes", env, "When a grabbed RED torrent finishes, Redwave only adds OPS when the torrent payload manifest matches the RED files.") }}
+                {{ checkbox_field("OPS_CROSS_SEED", "Add OPS cross-seed after RED completes", env, "When a grabbed RED torrent finishes, Redwave only adds OPS when the torrent payload manifest matches or can be safely mapped to the RED files.") }}
               </div>
             </div>
           </div>

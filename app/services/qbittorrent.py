@@ -190,5 +190,41 @@ class QBittorrentClient:
         response.raise_for_status()
         return response.json()
 
+    async def _post_torrent_action(self, endpoint: str, data: dict[str, str], ignore_conflict: bool = False) -> None:
+        base_url = qbt_base_url()
+        async with httpx.AsyncClient(timeout=10.0, headers=_qbt_headers(base_url)) as client:
+            await self.login(client, base_url)
+            response = await client.post(f"{base_url}/api/v2/torrents/{endpoint}", data=data)
+        if response.status_code == 409 and ignore_conflict:
+            return
+        if response.status_code >= 400:
+            body = _body_preview(response)
+            raise QBittorrentError(f"qBittorrent {endpoint} failed (HTTP {response.status_code}: {body or 'empty response'}).")
+
+    async def rename_torrent(self, torrent_hash: str, name: str) -> None:
+        if not torrent_hash or not name:
+            return
+        await self._post_torrent_action("rename", {"hash": torrent_hash, "name": name}, ignore_conflict=True)
+
+    async def rename_folder(self, torrent_hash: str, old_path: str, new_path: str) -> None:
+        if not torrent_hash or not old_path or not new_path or old_path == new_path:
+            return
+        await self._post_torrent_action("renameFolder", {"hash": torrent_hash, "oldPath": old_path, "newPath": new_path}, ignore_conflict=True)
+
+    async def rename_file(self, torrent_hash: str, old_path: str, new_path: str) -> None:
+        if not torrent_hash or not old_path or not new_path or old_path == new_path:
+            return
+        await self._post_torrent_action("renameFile", {"hash": torrent_hash, "oldPath": old_path, "newPath": new_path})
+
+    async def recheck_torrent(self, torrent_hash: str) -> None:
+        if not torrent_hash:
+            return
+        await self._post_torrent_action("recheck", {"hashes": torrent_hash})
+
+    async def resume_torrent(self, torrent_hash: str) -> None:
+        if not torrent_hash:
+            return
+        await self._post_torrent_action("resume", {"hashes": torrent_hash})
+
 
 qbt_client = QBittorrentClient()
