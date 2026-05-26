@@ -133,6 +133,8 @@
                  style="color:var(--text); text-decoration:none;"
                  onmouseover="this.style.color='#a78bfa'"
                  onmouseout="this.style.color='var(--text)'">{{ t.title }}</a>
+              <span title="{{ 'Exact artist, album, and year match' if t.match_exact else 'Close tracker match; check the linked release before grabbing' }}"
+                    style="display:inline-block; margin-left:.35rem; border:1px solid {{ 'rgba(74,222,128,.35)' if t.match_exact else 'rgba(250,204,21,.35)' }}; color:{{ '#4ade80' if t.match_exact else '#facc15' }}; background:{{ 'rgba(74,222,128,.12)' if t.match_exact else 'rgba(250,204,21,.12)' }}; font-size:.62rem; line-height:1; padding:.16rem .32rem; border-radius:.2rem; vertical-align:middle;">{{ t.match_label }}</span>
             </td>
             <!-- Size -->
             <td style="padding:.65rem .75rem; color:var(--muted); text-align:right; white-space:nowrap;">{{ t.size_human }}</td>
@@ -180,6 +182,8 @@
                 <input type="hidden" name="red_group_id"   value="{{ t.red_group_id }}">
                 <input type="hidden" name="format"         value="{{ t.format }}">
                 <input type="hidden" name="encoding"       value="{{ t.encoding }}">
+                <input type="hidden" name="media"          value="{{ t.media }}">
+                <input type="hidden" name="remaster"       value="{{ t.remaster }}">
                 <input type="hidden" name="size_bytes"     value="{{ t.size_bytes }}">
                 <input type="hidden" name="seeders"        value="{{ t.seeders }}">
                 <input type="hidden" name="use_freeleech_token" value="{{ 1 if t.will_use_token else 0 }}">
@@ -188,7 +192,7 @@
                         style="background:#16a34a; color:#fff; border:none; border-radius:.3rem; padding:.35rem .85rem; font-size:.75rem; font-weight:600; cursor:pointer; white-space:nowrap; transition:background .15s;"
                         onmouseover="this.style.background='#15803d'"
                         onmouseout="this.style.background='#16a34a'">
-                  Grab
+                  Grab {{ t.tracker_label }}
                 </button>
               </form>
             </td>

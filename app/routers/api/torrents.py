@@ -24,8 +24,9 @@ from app.services.redacted import (
 )
 from app.models.request import AlbumRequest, TorrentOption
 from app.database import get_db
-from app.utils import normalize_album
+from app.utils import normalize_album, normalize_artist
 from app.config import settings
+from app.services.torrent_meta import TorrentManifest, manifests_payload_compatible, parse_torrent_manifest
 
 router = APIRouter(prefix="/api")
 
@@ -45,6 +46,8 @@ def _fmt_size(b: int) -> str:
 
 
 _TOKEN_RE = re.compile(r"[a-z0-9]+")
+_STRICT_TEXT_RE = re.compile(r"[\w]+", re.UNICODE)
+OPS_CROSS_SEED_MATCH_POLICY = "strict-exact-v1"
 
 
 def _match_text(value: str) -> str:
@@ -72,6 +75,32 @@ def _text_score(wanted: str, found: str, exact_points: int, contains_points: int
 
 def _album_match_score(album: str, group_album: str) -> int:
     return _text_score(album, group_album, exact_points=12, contains_points=8, token_points=4)
+
+
+def _strict_album_text(value: str) -> str:
+    value = unicodedata.normalize("NFKC", value or "").replace("&", " and ").casefold()
+    return " ".join(_STRICT_TEXT_RE.findall(value))
+
+
+def _release_year(value: str | int | None) -> str:
+    return str(value or "").strip()[:4]
+
+
+def _is_exact_group_match(group: dict, artist: str, album: str, year: str) -> bool:
+    wanted_artist = normalize_artist(artist)
+    group_artist = normalize_artist(group.get("artist", ""))
+    wanted_album = _strict_album_text(album)
+    group_album = _strict_album_text(group.get("groupName", ""))
+    wanted_year = _release_year(year)
+    group_year = _release_year(group.get("groupYear"))
+
+    if wanted_artist and group_artist and wanted_artist != group_artist:
+        return False
+    if wanted_album and group_album and wanted_album != group_album:
+        return False
+    if wanted_year and group_year and wanted_year != group_year:
+        return False
+    return bool(wanted_album and group_album)
 
 
 def _group_match_score(group: dict, artist: str, album: str, year: str) -> int:
@@ -124,6 +153,7 @@ def _build_torrent_rows(
         g_year = group.get("groupYear", year)
         album_score = _album_match_score(album, g_album)
         match_score = _group_match_score(group, artist, album, year)
+        match_exact = _is_exact_group_match(group, artist, album, year)
         year_mismatch = bool(year and g_year and str(g_year) != str(year))
         if album and album_score <= 0:
             continue
@@ -178,6 +208,7 @@ def _build_torrent_rows(
                 "format": fmt,
                 "encoding": encoding,
                 "media": media,
+                "remaster": remaster,
                 "size_bytes": size,
                 "size_human": _fmt_size(size),
                 "seeders": seeders,
@@ -195,6 +226,8 @@ def _build_torrent_rows(
                 "has_cue": has_cue,
                 "uploader": t.get("username", ""),
                 "match_score": match_score,
+                "match_exact": match_exact,
+                "match_label": "Exact" if match_exact else "Close",
             })
 
     return _sort_torrent_rows(torrent_list, quality_profile, media_scores)
@@ -224,6 +257,12 @@ def _source_note(red_count: int, ops_count: int, ops_configured: bool) -> str:
     return ""
 
 
+def _same_quality_value(wanted: str, found: str) -> bool:
+    if not (wanted or "").strip():
+        return True
+    return _match_text(wanted) == _match_text(found)
+
+
 async def _find_ops_cross_seed_match(
     artist: str,
     album: str,
@@ -232,8 +271,13 @@ async def _find_ops_cross_seed_match(
     token_mode: str,
     quality_profile: str,
     media_scores: dict[str, int],
+    selected_format: str = "",
+    selected_encoding: str = "",
+    selected_media: str = "",
+    selected_remaster: str = "",
+    selected_manifest: TorrentManifest | None = None,
 ) -> dict | None:
-    if not _truthy(settings.ops_cross_seed) or not ops_client.is_configured() or size_bytes <= 0:
+    if not _truthy(settings.ops_cross_seed) or not ops_client.is_configured() or size_bytes <= 0 or not selected_manifest:
         return None
 
     try:
@@ -251,8 +295,27 @@ async def _find_ops_cross_seed_match(
         media_scores,
     )
     for row in rows:
-        if int(row.get("size_bytes") or 0) == int(size_bytes):
-            return row
+        if int(row.get("size_bytes") or 0) != int(size_bytes):
+            continue
+        if not row.get("match_exact"):
+            continue
+        if not _same_quality_value(selected_format, row.get("format", "")):
+            continue
+        if not _same_quality_value(selected_encoding, row.get("encoding", "")):
+            continue
+        if not _same_quality_value(selected_media, row.get("media", "")):
+            continue
+        if not _same_quality_value(selected_remaster, row.get("remaster", "")):
+            continue
+        try:
+            ops_torrent_bytes = await ops_client.get_torrent_file(int(row.get("torrent_id") or 0), use_token=False)
+            ops_manifest = parse_torrent_manifest(ops_torrent_bytes)
+        except Exception:
+            continue
+        if not manifests_payload_compatible(selected_manifest, ops_manifest):
+            continue
+        row["torrent_manifest"] = ops_manifest.to_dict()
+        return row
     return None
 
 
@@ -358,8 +421,12 @@ async def grab_torrent(
     seeders = int(form.get("seeders", 0))
     use_freeleech_token = form.get("use_freeleech_token", "0") == "1"
     freeleech_token_mode = normalize_token_mode(form.get("freeleech_token_mode", ""))
-    tracker = form.get("tracker", "red")
+    tracker = str(form.get("tracker", "red")).strip().lower()
+    if tracker not in {"red", "ops"}:
+        tracker = "red"
     tracker_client = tracker_client_for(tracker)
+    media = form.get("media", "")
+    remaster = form.get("remaster", "")
     token_mode = normalize_token_mode(settings.red_use_freeleech_token)
     quality_profile = normalize_quality_profile(settings.red_quality_profile)
     media_scores = current_media_scores()
@@ -393,6 +460,7 @@ async def grab_torrent(
             use_token=use_freeleech_token if tracker == "red" else False,
             token_mode=freeleech_token_mode,
         )
+        selected_manifest = parse_torrent_manifest(torrent_bytes)
         qbt_tag = settings.qbt_red_tag if tracker == "red" else settings.qbt_ops_tag
         add_result = await qbt_client.add_torrent_with_result(torrent_bytes, tags=[qbt_tag])
         if add_result:
@@ -409,6 +477,11 @@ async def grab_torrent(
                     token_mode,
                     quality_profile,
                     media_scores,
+                    selected_format=fmt,
+                    selected_encoding=encoding,
+                    selected_media=media,
+                    selected_remaster=remaster,
+                    selected_manifest=selected_manifest,
                 )
                 if ops_match:
                     raw_json["cross_seed"] = {
@@ -418,6 +491,8 @@ async def grab_torrent(
                             "group_id": ops_match.get("group_id"),
                             "title": ops_match.get("title", ""),
                             "size_bytes": ops_match.get("size_bytes", 0),
+                            "match_policy": OPS_CROSS_SEED_MATCH_POLICY,
+                            "torrent_manifest": ops_match.get("torrent_manifest"),
                         }
                     }
                     cross_seed_status = "queued"
@@ -429,6 +504,17 @@ async def grab_torrent(
     except Exception as e:
         album_request.status = "failed"
         grab_error = str(e)
+
+    raw_json["selected"] = {
+        "tracker": tracker,
+        "format": fmt,
+        "encoding": encoding,
+        "media": media,
+        "remaster": remaster,
+        "size_bytes": size_bytes,
+    }
+    if "selected_manifest" in locals():
+        raw_json["selected"]["torrent_manifest"] = selected_manifest.to_dict()
 
     torrent_option = TorrentOption(
         request_id=album_request.id,
@@ -451,6 +537,7 @@ async def grab_torrent(
         "album_request": album_request,
         "artist": artist,
         "album": album,
+        "tracker_label": tracker_client.label,
         "cross_seed_status": cross_seed_status,
         "grab_error": grab_error,
     })
