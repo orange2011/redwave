@@ -756,6 +756,45 @@ class LastFmClient:
         except Exception:
             return {}
 
+    async def get_track_global_stats(self, artist: str, tracks: list[dict]) -> dict[str, dict[str, int]]:
+        """Return per-track global Last.fm stats for an album track list."""
+        if not settings.lastfm_api_key or not artist or not tracks:
+            return {}
+
+        semaphore = asyncio.Semaphore(4)
+
+        async def _fetch(track: dict) -> tuple[str, dict[str, int]] | None:
+            name = (track.get("name") or track.get("track") or "").strip()
+            if not name:
+                return None
+            try:
+                async with semaphore:
+                    r = await self._client.get(self.BASE_URL, params={
+                        "method": "track.getInfo",
+                        "artist": artist,
+                        "track": name,
+                        "api_key": settings.lastfm_api_key,
+                        "format": "json",
+                        "autocorrect": 1,
+                    })
+                r.raise_for_status()
+                data = r.json().get("track", {})
+                return name.lower(), {
+                    "playcount": int(data.get("playcount") or 0),
+                    "listeners": int(data.get("listeners") or 0),
+                }
+            except Exception:
+                return None
+
+        results = await asyncio.gather(*[_fetch(track) for track in tracks])
+        stats: dict[str, dict[str, int]] = {}
+        for item in results:
+            if not item:
+                continue
+            name, track_stats = item
+            stats[name] = track_stats
+        return stats
+
     async def get_album_info(self, artist: str, album: str) -> dict | None:
         try:
             r = await self._client.get(self.BASE_URL, params={

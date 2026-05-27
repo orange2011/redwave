@@ -26,11 +26,92 @@
     line-height: 1;
     opacity: .35;
   }
+  .tracker-badge-stack {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: .25rem;
+  }
+  .tracker-side-badge {
+    border: 1px solid rgba(167,139,250,.32);
+    background: rgba(167,139,250,.12);
+    color: #c4b5fd;
+    font-size: .58rem;
+    font-weight: 750;
+    line-height: 1;
+    padding: .16rem .32rem;
+    border-radius: .22rem;
+    white-space: nowrap;
+  }
+  .torrent-picker-overlay {
+    background: rgba(0,0,0,.88);
+    backdrop-filter: blur(8px) brightness(.72);
+    -webkit-backdrop-filter: blur(8px) brightness(.72);
+  }
+  .torrent-picker-panel {
+    background: rgba(14,14,19,.97);
+    border: 1px solid var(--border-soft);
+    border-radius: 0.5rem;
+    box-shadow: 0 24px 72px rgba(0,0,0,.58);
+    display: flex;
+    flex-direction: column;
+    max-height: 85vh;
+    max-width: 960px;
+    width: 100%;
+  }
+  .torrent-row {
+    border-bottom: 1px solid var(--border-soft);
+    transition: background .12s ease;
+  }
+  .torrent-row:hover {
+    background: rgba(255,255,255,.045);
+  }
+  .torrent-title-link {
+    color: var(--text);
+    text-decoration: none;
+    transition: color .12s ease;
+  }
+  .torrent-title-link:hover {
+    color: #c4b5fd;
+  }
+  .torrent-grab-button {
+    background: #16a34a;
+    border: 0;
+    border-radius: .3rem;
+    color: #fff;
+    cursor: pointer;
+    font-size: .75rem;
+    font-weight: 700;
+    padding: .38rem .88rem;
+    transition: background .12s ease, transform .12s ease;
+    white-space: nowrap;
+  }
+  .torrent-grab-button:hover {
+    background: #15803d;
+  }
+  .torrent-grab-button:active {
+    transform: translateY(1px);
+  }
+  .torrent-close-button {
+    background: var(--panel-soft);
+    border: 1px solid var(--border-soft);
+    border-radius: .3rem;
+    color: var(--muted);
+    cursor: pointer;
+    font-size: .8rem;
+    padding: .4rem 1rem;
+    transition: color .12s ease, background .12s ease, border-color .12s ease;
+  }
+  .torrent-close-button:hover {
+    background: var(--panel-hover);
+    border-color: var(--border);
+    color: var(--text);
+  }
 </style>
-<div class="fixed inset-0 bg-black bg-opacity-80 z-50 flex items-center justify-center p-4"
+<div class="torrent-picker-overlay fixed inset-0 z-50 flex items-center justify-center p-4"
      onclick="if(event.target===this)this.remove()">
   <div data-torrent-picker
-       style="background:var(--panel-strong); border:1px solid var(--border-soft); border-radius:0.5rem; width:100%; max-width:900px; max-height:85vh; display:flex; flex-direction:column;"
+       class="torrent-picker-panel"
        onclick="event.stopPropagation()">
 
     <!-- Header -->
@@ -55,6 +136,9 @@
         <span>Preferred quality: <span style="color:var(--text); font-weight:600;">{{ quality_profile_label or "Any quality" }}</span></span>
         <span title="{{ media_score_summary or '' }}">Media scores: <span style="color:var(--text); font-weight:600;">custom ranking</span></span>
         <span>Freeleech tokens: <span style="color:var(--text); font-weight:600;">{{ freeleech_token_label }}</span></span>
+        {% if ops_cross_seed_enabled %}
+        <span title="For RED grabs, Redwave checks OPS after the RED torrent completes and only adds OPS when the payload matches or maps safely.">RED grabs: <span style="color:#c4b5fd; font-weight:600;">OPS safety check</span></span>
+        {% endif %}
       </div>
       <table style="width:100%; border-collapse:collapse; font-size:0.8rem;">
         <thead>
@@ -108,6 +192,7 @@
         <tbody data-torrent-rows>
           {% for t in torrents %}
           <tr data-torrent-row
+              class="torrent-row"
               data-original-order="{{ loop.index0 }}"
               data-tracker-label="{{ t.tracker_label }}"
               data-age-days="{{ t.age_days }}"
@@ -117,22 +202,24 @@
               data-leechers="{{ t.leechers }}"
               data-quality-score="{{ t.preference_score }}"
               data-media-score="{{ t.media_score }}"
-              data-token-score="{% if t.freeleech %}3{% elif t.will_use_token %}2{% elif t.can_use_token %}1{% else %}0{% endif %}"
-              style="border-bottom:1px solid var(--border-soft); transition:background .15s;"
-              onmouseover="this.style.background='var(--panel-hover)'"
-              onmouseout="this.style.background=''">
+              data-token-score="{% if t.freeleech %}3{% elif t.will_use_token %}2{% elif t.can_use_token %}1{% else %}0{% endif %}">
             <!-- Source -->
             <td style="padding:.65rem 1rem;">
-              <span style="background:{{ '#c0392b' if t.tracker == 'red' else '#2563eb' }}; color:#fff; font-size:.65rem; font-weight:700; padding:.2rem .5rem; border-radius:.25rem; letter-spacing:.03em;">{{ t.tracker_label }}</span>
+              <div class="tracker-badge-stack">
+                <span style="background:{{ '#c0392b' if t.tracker == 'red' else '#2563eb' }}; color:#fff; font-size:.65rem; font-weight:700; padding:.2rem .5rem; border-radius:.25rem; letter-spacing:.03em;">{{ t.tracker_label }}</span>
+                {% if t.tracker == "red" and ops_cross_seed_enabled %}
+                <span class="tracker-side-badge" title="OPS will be checked after RED completes; not added unless the payload is safe.">OPS check</span>
+                {% elif t.tracker == "ops" %}
+                <span class="tracker-side-badge" title="This grabs the OPS torrent directly.">Direct</span>
+                {% endif %}
+              </div>
             </td>
             <!-- Age -->
             <td style="padding:.65rem .75rem; color:var(--subtle); white-space:nowrap;">{{ t.age_days }}d</td>
             <!-- Title -->
             <td style="padding:.65rem .75rem;">
               <a href="{{ t.tracker_url }}" target="_blank"
-                 style="color:var(--text); text-decoration:none;"
-                 onmouseover="this.style.color='#a78bfa'"
-                 onmouseout="this.style.color='var(--text)'">{{ t.title }}</a>
+                 class="torrent-title-link">{{ t.title }}</a>
               <span title="{{ 'Exact artist, album, and year match' if t.match_exact else 'Close tracker match; check the linked release before grabbing' }}"
                     style="display:inline-block; margin-left:.35rem; border:1px solid {{ 'rgba(74,222,128,.35)' if t.match_exact else 'rgba(250,204,21,.35)' }}; color:{{ '#4ade80' if t.match_exact else '#facc15' }}; background:{{ 'rgba(74,222,128,.12)' if t.match_exact else 'rgba(250,204,21,.12)' }}; font-size:.62rem; line-height:1; padding:.16rem .32rem; border-radius:.2rem; vertical-align:middle;">{{ t.match_label }}</span>
             </td>
@@ -189,10 +276,8 @@
                 <input type="hidden" name="use_freeleech_token" value="{{ 1 if t.will_use_token else 0 }}">
                 <input type="hidden" name="freeleech_token_mode" value="{{ t.token_mode }}">
                 <button type="submit"
-                        style="background:#16a34a; color:#fff; border:none; border-radius:.3rem; padding:.35rem .85rem; font-size:.75rem; font-weight:600; cursor:pointer; white-space:nowrap; transition:background .15s;"
-                        onmouseover="this.style.background='#15803d'"
-                        onmouseout="this.style.background='#16a34a'">
-                  Grab {{ t.tracker_label }}
+                        class="torrent-grab-button">
+                  {% if t.tracker == "red" and ops_cross_seed_enabled %}Grab RED + OPS check{% else %}Grab {{ t.tracker_label }}{% endif %}
                 </button>
               </form>
             </td>
@@ -211,7 +296,7 @@
     <!-- Footer -->
     <div style="padding:.75rem 1.25rem; border-top:1px solid var(--border-soft); display:flex; justify-content:flex-end;">
       <button onclick="document.getElementById('modal-container').innerHTML=''"
-              style="background:var(--panel-soft); color:var(--muted); border:1px solid var(--border-soft); border-radius:.3rem; padding:.4rem 1rem; font-size:.8rem; cursor:pointer;">
+              class="torrent-close-button">
         Close
       </button>
     </div>

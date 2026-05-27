@@ -35,6 +35,37 @@ async def _tracker_album_title_hint(artist: str, album: str, year: str) -> str:
     return album
 
 
+def _compact_count(value: int) -> str:
+    if value >= 1_000_000_000:
+        return f"{value / 1_000_000_000:.1f}B".replace(".0B", "B")
+    if value >= 1_000_000:
+        return f"{value / 1_000_000:.1f}M".replace(".0M", "M")
+    if value >= 1_000:
+        return f"{value / 1_000:.1f}K".replace(".0K", "K")
+    return str(value)
+
+
+def _attach_global_track_popularity(tracks: list[dict], stats: dict[str, dict[str, int]]) -> tuple[list[dict], int]:
+    if not tracks:
+        return tracks, 0
+
+    enriched = []
+    max_count = 0
+    for track in tracks:
+        name = (track.get("name") or track.get("track") or "").strip()
+        track_stats = stats.get(name.lower(), {}) if name else {}
+        playcount = int(track_stats.get("playcount") or 0)
+        listeners = int(track_stats.get("listeners") or 0)
+        max_count = max(max_count, playcount)
+        enriched.append({
+            **track,
+            "global_playcount": playcount,
+            "global_listeners": listeners,
+            "global_playcount_display": _compact_count(playcount),
+        })
+    return enriched, max_count
+
+
 @router.get("/album/{mb_id}", response_class=HTMLResponse)
 async def album_detail(
     request: Request,
@@ -161,6 +192,9 @@ async def album_detail(
             "most_played_track": most_played_track,
         })
 
+    track_stats = await lastfm_client.get_track_global_stats(artist_name, tracks)
+    tracks, track_popularity_max = _attach_global_track_popularity(tracks, track_stats)
+
     return templates.TemplateResponse("album_detail.html", {
         "request": request,
         "mb_id": real_mb_id,
@@ -186,4 +220,5 @@ async def album_detail(
         "in_collection": in_collection,
         "highlight_track": highlight,
         "most_played_track": most_played_track,
+        "track_popularity_max": track_popularity_max,
     })

@@ -302,14 +302,11 @@
       </div>
       <div class="artist-album-row" tabindex="0">
         {% for a in group.albums %}
+        {% set fallback_cover = "/api/collection/cover_lfm?artist=" ~ (a.artist | urlencode) ~ "&album=" ~ (a.album | urlencode) %}
         <a href="/album/{{ a.mb_id if a.mb_id else '_' }}?artist={{ a.artist | urlencode }}&album={{ a.album | urlencode }}&cover={{ (a.cover_url or '') | urlencode }}{% if a.year %}&year={{ a.year | urlencode }}{% endif %}"
            class="artist-album-card">
-          <div class="artist-album-cover{% if a.cover_url %} skeleton-surface{% else %} has-error{% endif %}">
-          {% if a.cover_url %}
-          <img src="{{ a.cover_url }}" alt="{{ a.album }}" loading="lazy" onerror="this.parentElement.classList.add('has-error'); this.parentElement.innerHTML='♪'">
-          {% else %}
-          ♪
-          {% endif %}
+          <div class="artist-album-cover skeleton-surface">
+          <img src="{{ a.cover_url or fallback_cover }}" alt="{{ a.album }}" loading="lazy" onerror="redwaveCoverFallback(this, '{{ fallback_cover }}')">
           </div>
           <div class="artist-album-title">{{ a.album }}</div>
           <div class="artist-album-year">{{ a.year or "" }}</div>
@@ -361,17 +358,14 @@
 {% if albums %}
 <div class="collection-grid">
   {% for a in albums %}
+  {% set fallback_cover = "/api/collection/cover_lfm?artist=" ~ (a.artist | urlencode) ~ "&album=" ~ (a.album | urlencode) %}
   <div class="cursor-pointer group"
        onclick="window.location='/album/{{ a.mb_id if a.mb_id else '_' }}?artist={{ a.artist | urlencode }}&album={{ a.album | urlencode }}&cover={{ (a.cover_url or '') | urlencode }}{% if a.year %}&year={{ a.year | urlencode }}{% endif %}'">
-    <div class="collection-cover{% if a.cover_url %} skeleton-surface{% else %} has-error{% endif %} group-hover:opacity-80 transition-opacity mb-2">
-      {% if a.cover_url %}
-      <img src="{{ a.cover_url }}"
+    <div class="collection-cover skeleton-surface group-hover:opacity-80 transition-opacity mb-2">
+      <img src="{{ a.cover_url or fallback_cover }}"
            alt="{{ a.album }}"
            loading="lazy"
-           onerror="this.parentElement.classList.add('has-error'); this.parentElement.innerHTML='♪'">
-      {% else %}
-      ♪
-      {% endif %}
+           onerror="redwaveCoverFallback(this, '{{ fallback_cover }}')">
     </div>
     <p class="text-white text-xs font-semibold truncate leading-tight">{{ a.album }}</p>
     <a href="/artist/{{ a.artist | urlencode }}"
@@ -385,6 +379,16 @@
 {% endif %}
 
 <script>
+  window.redwaveCoverFallback = function redwaveCoverFallback(img, fallbackUrl) {
+    if (!img.dataset.fallbackTried && fallbackUrl && img.src !== new URL(fallbackUrl, window.location.origin).href) {
+      img.dataset.fallbackTried = '1';
+      img.src = fallbackUrl;
+      return;
+    }
+    img.parentElement.classList.add('has-error');
+    img.parentElement.innerHTML = '♪';
+  };
+
   const artistToggle = document.getElementById('artist-directory-toggle');
   const artistDirectory = document.getElementById('artist-directory');
   const initialCollectionCounts = { albums: {{ total }}, artists: {{ artist_total }} };
