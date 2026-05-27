@@ -381,6 +381,7 @@ async def search_torrents(
     )
     torrent_list = _sort_torrent_rows(red_rows + ops_rows, quality_profile, media_scores)
     source_note = _source_note(len(red_rows), len(ops_rows), ops_client.is_configured())
+    ops_cross_seed_enabled = _truthy(settings.ops_cross_seed) and ops_client.is_configured()
 
     error = " / ".join(e for e in (red_error, ops_error) if e) if not torrent_list else ""
 
@@ -399,6 +400,7 @@ async def search_torrents(
         "quality_profile": quality_profile,
         "quality_profile_label": quality_profile_label(quality_profile),
         "media_score_summary": media_score_summary(media_scores),
+        "ops_cross_seed_enabled": ops_cross_seed_enabled,
     })
 
 

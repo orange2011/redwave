@@ -20,8 +20,61 @@
     background: rgba(255,255,255,0.015);
     border-radius: 8px;
   }
+  .detail-tracklist-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    margin-bottom: 0.85rem;
+  }
+  .detail-tracklist-head h2 {
+    margin: 0;
+  }
+  .detail-track-controls {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.22rem;
+    border: 1px solid var(--border-soft);
+    background: rgba(255,255,255,0.035);
+    border-radius: 8px;
+    padding: 0.18rem;
+  }
+  .detail-track-sort {
+    border: 0;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--muted);
+    cursor: pointer;
+    font-size: 0.72rem;
+    font-weight: 750;
+    line-height: 1;
+    min-height: 1.9rem;
+    padding: 0 0.62rem;
+    white-space: nowrap;
+  }
+  .detail-track-sort:hover,
+  .detail-track-sort[aria-pressed="true"] {
+    background: var(--panel-hover);
+    color: var(--text);
+  }
+  .detail-popularity-score {
+    width: 6.7rem;
+    flex-shrink: 0;
+  }
+  .detail-popularity-value {
+    display: block;
+    color: #ddd6fe;
+    font-size: 1rem;
+    font-weight: 760;
+    letter-spacing: 0;
+    line-height: 1;
+    text-align: right;
+  }
   .theme-light .detail-track-row {
     background: rgba(24,32,43,0.03);
+  }
+  .theme-light .detail-popularity-value {
+    color: #5b21b6;
   }
   .detail-primary-action {
     border-radius: 8px;
@@ -29,6 +82,16 @@
   @media (max-width: 640px) {
     .detail-tracklist {
       padding: 0.9rem;
+    }
+    .detail-tracklist-head {
+      align-items: flex-start;
+      flex-direction: column;
+    }
+    .detail-popularity-score {
+      width: 5.2rem;
+    }
+    .detail-popularity-value {
+      font-size: 0.9rem;
     }
   }
 </style>
@@ -52,12 +115,13 @@
 <div class="detail-panel">
 <div class="flex flex-col md:flex-row gap-8">
   <!-- Cover -->
+  {% set fallback_cover = "/api/collection/cover_lfm?artist=" ~ (artist | urlencode) ~ "&album=" ~ (album | urlencode) %}
   <div class="flex-shrink-0 flex justify-center md:block">
-    {% if cover_url %}
+    {% if cover_url or fallback_cover %}
     <div class="w-56 h-56 md:w-64 md:h-64 rounded-2xl shadow-2xl skeleton-surface flex items-center justify-center text-7xl text-gray-600">
-      <img src="{{ cover_url }}" alt="{{ album }}" onclick="openLightbox(this.src)"
+      <img src="{{ cover_url or fallback_cover }}" alt="{{ album }}" onclick="openLightbox(this.src)"
            class="w-full h-full object-cover rounded-2xl cursor-zoom-in"
-           onerror="this.parentElement.classList.add('has-error'); this.parentElement.innerHTML='♪'">
+           onerror="redwaveCoverFallback(this, '{{ fallback_cover }}')">
     </div>
     {% else %}
     <div class="w-56 h-56 md:w-64 md:h-64 bg-card rounded-2xl flex items-center justify-center text-7xl shadow-2xl">♪</div>
@@ -164,17 +228,34 @@
 <!-- Tracklist -->
 {% if tracks %}
 <div class="detail-panel detail-tracklist">
-  <h2 class="text-lg font-semibold text-gray-300 mb-3">Tracklist</h2>
-  <div class="rounded-xl overflow-hidden">
+  <div class="detail-tracklist-head">
+    <h2 class="text-lg font-semibold text-gray-300">Tracklist</h2>
+    {% if track_popularity_max %}
+    <div class="detail-track-controls" aria-label="Track order">
+      <button type="button" class="detail-track-sort" aria-pressed="true" onclick="redwaveSortTracklist(this, 'album')">Album order</button>
+      <button type="button" class="detail-track-sort" aria-pressed="false" onclick="redwaveSortTracklist(this, 'popular')">Popular first</button>
+    </div>
+    {% endif %}
+  </div>
+  <div class="rounded-xl overflow-hidden" data-tracklist>
     {% for t in tracks %}
     {% set is_highlighted = highlight_track and (t.name | lower == highlight_track | lower) %}
     {% set is_most_played = most_played_track and (t.name | lower == most_played_track | lower) and not is_highlighted %}
     <div class="detail-track-row flex items-center gap-3 px-4 py-2.5 {% if not loop.last %}border-b border-border{% endif %} hover:bg-cardHover transition-colors"
+         data-track-row
+         data-track-order="{{ loop.index0 }}"
+         data-track-popularity="{{ t.global_playcount or 0 }}"
          {% if is_highlighted %}style="background:rgba(162,56,255,0.12); border-left:3px solid var(--purple);" {% endif %}>
       <span class="text-muted text-xs w-5 text-right flex-shrink-0">{{ t.rank }}</span>
       <span class="text-sm flex-1 {% if is_highlighted %}font-semibold{% endif %}" style="color:{% if is_highlighted %}#c084fc{% else %}var(--text){% endif %};">{{ t.name }}</span>
       {% if is_highlighted %}<span class="text-xs flex-shrink-0" style="color:var(--purple);">LB pick</span>{% endif %}
       {% if is_most_played %}<span class="text-xs flex-shrink-0" style="color:#f59e0b;">★ most played</span>{% endif %}
+      {% if track_popularity_max %}
+      {% set global_count = t.global_playcount or 0 %}
+      <div class="detail-popularity-score" title="{{ '{:,}'.format(global_count) }} global Last.fm scrobble{{ 's' if global_count != 1 }}{% if t.global_listeners %} · {{ '{:,}'.format(t.global_listeners) }} listener{{ 's' if t.global_listeners != 1 }}{% endif %}">
+        <span class="detail-popularity-value">{{ t.global_playcount_display if global_count else "0" }}</span>
+      </div>
+      {% endif %}
       <!-- Deezer 30s preview -->
       {% if t.preview %}
       <button onclick="playPreview('{{ t.preview }}', '{{ t.name | replace("'", "\\'") }}')"
@@ -233,6 +314,35 @@
 
 <script>
 // ── Lightbox ──────────────────────────────────────────────────────────────────
+window.redwaveSortTracklist = function redwaveSortTracklist(button, mode) {
+  const panel = button.closest('.detail-tracklist');
+  const list = panel?.querySelector('[data-tracklist]');
+  if (!list) return;
+
+  const rows = Array.from(list.querySelectorAll('[data-track-row]'));
+  rows.sort((a, b) => {
+    if (mode === 'popular') {
+      const popularDiff = Number(b.dataset.trackPopularity || 0) - Number(a.dataset.trackPopularity || 0);
+      if (popularDiff) return popularDiff;
+    }
+    return Number(a.dataset.trackOrder || 0) - Number(b.dataset.trackOrder || 0);
+  });
+  rows.forEach((row) => list.appendChild(row));
+  panel.querySelectorAll('.detail-track-sort').forEach((sortButton) => {
+    sortButton.setAttribute('aria-pressed', sortButton === button ? 'true' : 'false');
+  });
+};
+
+window.redwaveCoverFallback = function redwaveCoverFallback(img, fallbackUrl) {
+  if (!img.dataset.fallbackTried && fallbackUrl && img.src !== new URL(fallbackUrl, window.location.origin).href) {
+    img.dataset.fallbackTried = '1';
+    img.src = fallbackUrl;
+    return;
+  }
+  img.parentElement.classList.add('has-error');
+  img.parentElement.innerHTML = '♪';
+};
+
 function openLightbox(src) {
   const lb = document.getElementById('lightbox');
   const frame = document.getElementById('lightbox-frame');

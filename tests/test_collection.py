@@ -1,4 +1,5 @@
 import unittest
+from pathlib import Path
 
 from app.routers.collection import _filter_albums, _sort_albums
 
@@ -35,6 +36,13 @@ class CollectionSortTests(unittest.TestCase):
 
         results = _filter_albums(albums, "compter")
         self.assertEqual([album["album"] for album in results], ["I Love My Computer"])
+
+    def test_collection_template_retries_missing_covers(self):
+        template = Path("app/templates/collection.html").read_text(encoding="utf-8")
+
+        self.assertIn("redwaveCoverFallback", template)
+        self.assertIn("/api/collection/cover_lfm", template)
+        self.assertIn("a.cover_url or fallback_cover", template)
 
 
 if __name__ == "__main__":
