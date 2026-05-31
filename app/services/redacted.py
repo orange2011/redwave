@@ -1,9 +1,12 @@
+import asyncio
+import copy
 import re
 import time
 import unicodedata
 
 import httpx
 from app.config import settings
+from app.utils import normalize_artist
 
 
 _SPACE_RE = re.compile(r"\s+")
@@ -15,6 +18,8 @@ _TOKEN_ERROR_MESSAGES = (
     "You cannot use tokens here",
 )
 TRACKER_RATE_LIMIT_SECONDS = 60 * 60
+TRACKER_REQUEST_SPACING_SECONDS = 1.15
+TRACKER_SEARCH_CACHE_SECONDS = 10 * 60
 _TRACKER_BACKOFF_UNTIL: dict[str, float] = {}
 _TRACKER_RATE_LIMIT_MESSAGES = (
     "temporarily banned",
@@ -102,10 +107,52 @@ def _clean_query(value: str) -> str:
     return _SPACE_RE.sub(" ", value).strip()
 
 
+def _group_key(group: dict) -> str:
+    return str(
+        group.get("groupId")
+        or f"{group.get('artist', '')}|{group.get('groupName', '')}|{group.get('groupYear', '')}"
+    )
+
+
 def _without_punctuation(value: str) -> str:
     value = unicodedata.normalize("NFKC", value)
     value = _PUNCT_RE.sub(" ", value)
     return _clean_query(value)
+
+
+def _track_name(track: dict | str) -> str:
+    if isinstance(track, str):
+        return track.strip()
+    return (track.get("name") or track.get("track") or track.get("title") or "").strip()
+
+
+def _track_search_titles(tracks: list[dict | str], album: str = "", max_tracks: int = 12) -> list[str]:
+    album_key = _without_punctuation(album).casefold()
+    candidates: list[tuple[int, int, int, str]] = []
+    seen: set[str] = set()
+    for index, track in enumerate(tracks or []):
+        title = _clean_query(_track_name(track))
+        key = _without_punctuation(title).casefold()
+        if not key or key in seen or len(key) < 3:
+            continue
+        seen.add(key)
+        album_priority = 0 if album_key and key == album_key else 1
+        candidates.append((album_priority, -len(key), index, title))
+
+    candidates.sort()
+    return [title for _, _, _, title in candidates[:max_tracks]]
+
+
+def _same_clean_text(left: str, right: str) -> bool:
+    left_key = _without_punctuation(left).casefold()
+    right_key = _without_punctuation(right).casefold()
+    return bool(left_key and right_key and left_key == right_key)
+
+
+def _group_artist_matches(group: dict, artist: str) -> bool:
+    wanted = normalize_artist(artist)
+    found = normalize_artist(group.get("artist", ""))
+    return bool(wanted and found and (wanted == found or wanted in found or found in wanted))
 
 
 def _album_variants(album: str) -> list[str]:
@@ -319,6 +366,8 @@ class GazelleTrackerClient:
             timeout=15.0,
             follow_redirects=False,
         )
+        self._search_cache: dict[tuple[str, str], tuple[float, list[dict]]] = {}
+        self._track_search_cache: dict[tuple[str, str, tuple[str, ...]], tuple[float, list[dict]]] = {}
 
     @property
     def api_key(self) -> str:
@@ -361,9 +410,21 @@ class GazelleTrackerClient:
     def group_url(self, group_id: int | str | None) -> str:
         return f"{self.SITE_URL}/torrents.php?id={group_id}" if group_id else self.SITE_URL
 
+    def _mark_group(self, group: dict, album: str = "") -> dict:
+        group["_redwave_search_album"] = album
+        group["_redwave_tracker"] = self.tracker
+        group["_redwave_tracker_label"] = self.label
+        group["_redwave_group_url"] = self.group_url(group.get("groupId"))
+        return group
+
     async def search_torrents(self, artist: str, album: str) -> list[dict]:
         if not self.is_configured():
             return []
+        cache_key = (artist.strip().casefold(), album.strip().casefold())
+        cached = self._search_cache.get(cache_key)
+        now = time.monotonic()
+        if cached and cached[0] > now:
+            return copy.deepcopy(cached[1])
         self._sync_auth_header()
         self._raise_if_backoff_active()
         results = []
@@ -390,21 +451,99 @@ class GazelleTrackerClient:
                 continue
 
             for group in data.get("response", {}).get("results", []):
-                group_id = group.get("groupId")
-                key = group_id or f"{group.get('artist', '')}|{group.get('groupName', '')}|{group.get('groupYear', '')}"
+                key = _group_key(group)
                 if key in seen_group_ids:
                     continue
-                group["_redwave_search_album"] = album_variant
-                group["_redwave_tracker"] = self.tracker
-                group["_redwave_tracker_label"] = self.label
-                group["_redwave_group_url"] = self.group_url(group_id)
-                results.append(group)
+                results.append(self._mark_group(group, album_variant))
                 seen_group_ids.add(key)
 
             if results:
                 break
 
+        if len(self._search_cache) > 256:
+            self._search_cache.pop(next(iter(self._search_cache)))
+        self._search_cache[cache_key] = (now + TRACKER_SEARCH_CACHE_SECONDS, copy.deepcopy(results))
         return results
+
+    async def search_torrents_by_tracks(
+        self,
+        artist: str,
+        album: str,
+        tracks: list[dict | str],
+        max_tracks: int = 12,
+    ) -> list[dict]:
+        if not self.is_configured() or not artist:
+            return []
+
+        track_titles = _track_search_titles(tracks, album=album, max_tracks=max_tracks)
+        if not track_titles:
+            return []
+        cache_key = (artist.strip().casefold(), album.strip().casefold(), tuple(title.casefold() for title in track_titles))
+        cached = self._track_search_cache.get(cache_key)
+        now = time.monotonic()
+        if cached and cached[0] > now:
+            return copy.deepcopy(cached[1])
+
+        self._sync_auth_header()
+        self._raise_if_backoff_active()
+        results_by_key: dict[str, dict] = {}
+        hits_by_key: dict[str, list[str]] = {}
+        minimum_hits = 1 if len(track_titles) == 1 else 2
+        last_request_at = 0.0
+
+        for track_title in track_titles:
+            if last_request_at:
+                elapsed = time.monotonic() - last_request_at
+                if elapsed < TRACKER_REQUEST_SPACING_SECONDS:
+                    await asyncio.sleep(TRACKER_REQUEST_SPACING_SECONDS - elapsed)
+            last_request_at = time.monotonic()
+            r = await self._client.get(self.BASE_URL, params={
+                "action": "browse",
+                "filelist": track_title,
+                "filter_cat[1]": 1,
+            })
+            if r.status_code in (301, 302, 303, 307, 308):
+                raise ValueError(f"{self.label} API key invalid or expired.")
+            self._raise_if_rate_limited(r)
+            r.raise_for_status()
+            data = r.json()
+            if data.get("status") != "success":
+                if _looks_like_tracker_rate_limit(data.get("error", "")):
+                    self._record_backoff()
+                    raise TrackerRateLimitError(
+                        f"{self.label} reported a temporary ban/rate limit. "
+                        "Stop testing/searching it for a while; Redwave is backing off automatically."
+                    )
+                continue
+
+            for group in data.get("response", {}).get("results", []):
+                key = _group_key(group)
+                results_by_key.setdefault(key, group)
+                hits = hits_by_key.setdefault(key, [])
+                if track_title not in hits:
+                    hits.append(track_title)
+
+        matches = []
+        for key, group in results_by_key.items():
+            hits = hits_by_key.get(key, [])
+            title_track_hit = any(_same_clean_text(hit, album) for hit in hits)
+            if len(hits) < minimum_hits and not (title_track_hit and _group_artist_matches(group, artist)):
+                continue
+            marked = self._mark_group(group, album)
+            marked["_redwave_search_mode"] = "track_fallback"
+            marked["_redwave_track_hits"] = hits
+            marked["_redwave_track_hit_count"] = len(hits)
+            matches.append(marked)
+
+        matches.sort(key=lambda group: (
+            -int(group.get("_redwave_track_hit_count") or 0),
+            str(group.get("artist") or "").casefold(),
+            str(group.get("groupName") or "").casefold(),
+        ))
+        if len(self._track_search_cache) > 128:
+            self._track_search_cache.pop(next(iter(self._track_search_cache)))
+        self._track_search_cache[cache_key] = (now + TRACKER_SEARCH_CACHE_SECONDS, copy.deepcopy(matches))
+        return matches
 
     async def get_torrent_file(self, torrent_id: int, use_token: bool = False, token_mode: str | None = None) -> bytes:
         if not self.is_configured():

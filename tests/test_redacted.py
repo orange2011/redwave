@@ -1,5 +1,6 @@
 import asyncio
 import unittest
+from unittest.mock import patch
 
 import httpx
 
@@ -8,6 +9,7 @@ from app.services.redacted import (
     GazelleTrackerClient,
     TrackerRateLimitError,
     _TRACKER_BACKOFF_UNTIL,
+    _track_search_titles,
     media_score_summary,
     normalize_media_preference,
     normalize_quality_profile,
@@ -95,6 +97,146 @@ class RedactedQualityTests(unittest.TestCase):
                 await client._client.aclose()
                 _TRACKER_BACKOFF_UNTIL.pop("test-red", None)
                 object.__setattr__(settings, "red_api_key", old_key)
+
+        asyncio.run(run())
+
+    def test_track_search_titles_prefers_distinctive_tracks(self):
+        titles = _track_search_titles([
+            {"name": "Go"},
+            {"name": "Hull az elsargult level"},
+            {"name": "Elmegyek"},
+            {"name": "Elmegyek"},
+        ], album="Elmegyek", max_tracks=2)
+
+        self.assertEqual(titles, ["Elmegyek", "Hull az elsargult level"])
+
+    def test_track_fallback_search_aggregates_multiple_track_hits(self):
+        async def run():
+            client = GazelleTrackerClient(
+                tracker="test-red-track",
+                label="RED",
+                base_url="https://redacted.test/ajax.php",
+                site_url="https://redacted.test",
+                api_key_attr="red_api_key",
+            )
+            old_key = settings.red_api_key
+            old_client = client._client
+            object.__setattr__(settings, "red_api_key", "token")
+
+            group = {
+                "artist": "Mate Peter",
+                "groupName": "A track-hosting release",
+                "groupYear": "1997",
+                "groupId": 2591442,
+                "torrents": [{"torrentId": 99, "format": "FLAC", "encoding": "Lossless", "media": "CD"}],
+            }
+
+            def handler(request):
+                search = request.url.params.get("filelist", "")
+                results = [group] if ("Elmegyek" in search or "Most elsz" in search) else []
+                return httpx.Response(200, json={"status": "success", "response": {"results": results}})
+
+            try:
+                client._client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+                with patch("app.services.redacted.TRACKER_REQUEST_SPACING_SECONDS", 0):
+                    matches = await client.search_torrents_by_tracks(
+                        "Mate Peter",
+                        "Different Album",
+                        [{"name": "Elmegyek"}, {"name": "Most elsz"}, {"name": "No match"}],
+                    )
+            finally:
+                await client._client.aclose()
+                await old_client.aclose()
+                object.__setattr__(settings, "red_api_key", old_key)
+
+            self.assertEqual(len(matches), 1)
+            self.assertEqual(matches[0]["groupId"], 2591442)
+            self.assertEqual(matches[0]["_redwave_search_mode"], "track_fallback")
+            self.assertCountEqual(matches[0]["_redwave_track_hits"], ["Elmegyek", "Most elsz"])
+            self.assertEqual(matches[0]["_redwave_group_url"], "https://redacted.test/torrents.php?id=2591442")
+
+        asyncio.run(run())
+
+    def test_track_fallback_accepts_artist_title_track_single_hit(self):
+        async def run():
+            client = GazelleTrackerClient(
+                tracker="test-red-track",
+                label="RED",
+                base_url="https://redacted.test/ajax.php",
+                site_url="https://redacted.test",
+                api_key_attr="red_api_key",
+            )
+            old_key = settings.red_api_key
+            old_client = client._client
+            object.__setattr__(settings, "red_api_key", "token")
+
+            def handler(request):
+                results = [{
+                    "artist": "Máté Péter",
+                    "groupName": "Vallomások",
+                    "groupYear": "2001",
+                    "groupId": 2591442,
+                    "torrents": [{"torrentId": 99}],
+                }] if request.url.params.get("filelist") == "Elmegyek" else []
+                return httpx.Response(200, json={"status": "success", "response": {"results": results}})
+
+            try:
+                client._client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+                with patch("app.services.redacted.TRACKER_REQUEST_SPACING_SECONDS", 0):
+                    matches = await client.search_torrents_by_tracks(
+                        "Mate Peter",
+                        "Elmegyek",
+                        [{"name": "Elmegyek"}, {"name": "No match"}],
+                    )
+            finally:
+                await client._client.aclose()
+                await old_client.aclose()
+                object.__setattr__(settings, "red_api_key", old_key)
+
+            self.assertEqual(len(matches), 1)
+            self.assertEqual(matches[0]["groupId"], 2591442)
+            self.assertEqual(matches[0]["_redwave_track_hits"], ["Elmegyek"])
+
+        asyncio.run(run())
+
+    def test_track_fallback_search_rejects_single_hit_when_more_tracks_were_checked(self):
+        async def run():
+            client = GazelleTrackerClient(
+                tracker="test-red-track",
+                label="RED",
+                base_url="https://redacted.test/ajax.php",
+                site_url="https://redacted.test",
+                api_key_attr="red_api_key",
+            )
+            old_key = settings.red_api_key
+            old_client = client._client
+            object.__setattr__(settings, "red_api_key", "token")
+
+            def handler(request):
+                search = request.url.params.get("filelist", "")
+                results = [{
+                    "artist": "Mate Peter",
+                    "groupName": "One stray track",
+                    "groupYear": "1997",
+                    "groupId": 10,
+                    "torrents": [{"torrentId": 1}],
+                }] if "Elmegyek" in search else []
+                return httpx.Response(200, json={"status": "success", "response": {"results": results}})
+
+            try:
+                client._client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+                with patch("app.services.redacted.TRACKER_REQUEST_SPACING_SECONDS", 0):
+                    matches = await client.search_torrents_by_tracks(
+                        "Mate Peter",
+                        "Different Album",
+                        [{"name": "Elmegyek"}, {"name": "Most elsz"}],
+                    )
+            finally:
+                await client._client.aclose()
+                await old_client.aclose()
+                object.__setattr__(settings, "red_api_key", old_key)
+
+            self.assertEqual(matches, [])
 
         asyncio.run(run())
 

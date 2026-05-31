@@ -1,4 +1,5 @@
 import unittest
+from pathlib import Path
 
 from app.services.search_service import (
     album_score,
@@ -83,6 +84,14 @@ class SearchRankingTests(unittest.TestCase):
 
         self.assertIn("Posse2", variants)
         self.assertIn("4Tress Posse2", variants)
+
+    def test_search_template_shows_busy_state(self):
+        template = Path("app/templates/search.html").read_text(encoding="utf-8")
+
+        self.assertIn("search-busy-icon", template)
+        self.assertNotIn("search-loading-spinner", template)
+        self.assertIn("event.preventDefault()", template)
+        self.assertIn("aria-busy", template)
 
 
 if __name__ == "__main__":

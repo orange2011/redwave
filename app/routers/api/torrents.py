@@ -26,6 +26,8 @@ from app.models.request import AlbumRequest, TorrentOption
 from app.database import get_db
 from app.utils import normalize_album, normalize_artist
 from app.config import settings
+from app.services.album_cache import get_cached_album
+from app.services.lastfm import get_tracklist_with_fallback
 from app.services.torrent_meta import TorrentManifest, compare_torrent_payloads, parse_torrent_manifest
 
 router = APIRouter(prefix="/api")
@@ -51,7 +53,10 @@ OPS_CROSS_SEED_MATCH_POLICY = "payload-map-v2"
 
 
 def _match_text(value: str) -> str:
-    value = unicodedata.normalize("NFKC", value or "").lower()
+    value = unicodedata.normalize("NFKD", value or "")
+    folded = value.encode("ascii", "ignore").decode("ascii")
+    value = folded if _TOKEN_RE.search(folded) else unicodedata.normalize("NFKC", value)
+    value = value.lower()
     value = value.replace("&", " and ")
     value = normalize_album(value)
     return " ".join(_TOKEN_RE.findall(value))
@@ -151,16 +156,28 @@ def _build_torrent_rows(
         g_artist = group.get("artist", artist)
         g_album = group.get("groupName", album)
         g_year = group.get("groupYear", year)
+        track_hits = group.get("_redwave_track_hits") or []
+        is_track_fallback = bool(group.get("_redwave_search_mode") == "track_fallback" and track_hits)
+        artist_match_score = _text_score(artist, g_artist, exact_points=8, contains_points=5, token_points=3)
         album_score = _album_match_score(album, g_album)
         match_score = _group_match_score(group, artist, album, year)
         match_exact = _is_exact_group_match(group, artist, album, year)
         year_mismatch = bool(year and g_year and str(g_year) != str(year))
-        if album and album_score <= 0:
-            continue
-        if year_mismatch and album_score < 12:
-            continue
-        if match_score < 8:
-            continue
+        if is_track_fallback:
+            if artist and artist_match_score <= 0:
+                continue
+            track_match_score = min(48, 4 * len(track_hits))
+            if year and str(g_year) == str(year):
+                track_match_score += 3
+            match_score = max(match_score, artist_match_score + track_match_score)
+            match_exact = False
+        else:
+            if album and album_score <= 0:
+                continue
+            if year_mismatch and album_score < 12:
+                continue
+            if match_score < 8:
+                continue
 
         for t in group.get("torrents", []):
             fmt = t.get("format", "")
@@ -194,6 +211,12 @@ def _build_torrent_rows(
                 label += " / Cue"
             parts.append(f"[{label}]")
             title = " ".join(parts)
+            track_help = ""
+            if is_track_fallback:
+                preview_hits = ", ".join(track_hits[:3])
+                if len(track_hits) > 3:
+                    preview_hits += f", +{len(track_hits) - 3} more"
+                track_help = f"Matched by album track titles: {preview_hits}"
 
             torrent_id = t.get("torrentId")
             torrent_list.append({
@@ -227,7 +250,10 @@ def _build_torrent_rows(
                 "uploader": t.get("username", ""),
                 "match_score": match_score,
                 "match_exact": match_exact,
-                "match_label": "Exact" if match_exact else "Close",
+                "match_label": "Track" if is_track_fallback else ("Exact" if match_exact else "Close"),
+                "match_source": "track" if is_track_fallback else ("exact" if match_exact else "close"),
+                "match_help": track_help,
+                "track_hit_count": len(track_hits),
             })
 
     return _sort_torrent_rows(torrent_list, quality_profile, media_scores)
@@ -247,14 +273,44 @@ def _sort_torrent_rows(
     return torrent_list
 
 
-def _source_note(red_count: int, ops_count: int, ops_configured: bool) -> str:
+def _source_note(red_count: int, ops_count: int, ops_configured: bool, track_fallback_count: int = 0) -> str:
     if red_count and ops_count:
-        return f"Showing RED and OPS results ({red_count} RED, {ops_count} OPS)."
-    if red_count:
-        return "Showing RED results." if ops_configured else "Showing RED results. Add an OPS API key in Settings to compare both trackers."
-    if ops_count:
-        return "RED had no matching release. Showing OPS results."
-    return ""
+        note = f"Showing RED and OPS results ({red_count} RED, {ops_count} OPS)."
+    elif red_count:
+        note = "Showing RED results." if ops_configured else "Showing RED results. Add an OPS API key in Settings to compare both trackers."
+    elif ops_count:
+        note = "RED had no matching release. Showing OPS results."
+    else:
+        note = ""
+
+    if track_fallback_count:
+        suffix = (
+            f"Included {track_fallback_count} RED result"
+            f"{'' if track_fallback_count == 1 else 's'} matched by album track titles."
+        )
+        return f"{note} {suffix}".strip()
+    return note
+
+
+async def _album_tracks_for_tracker_fallback(
+    artist: str,
+    album: str,
+    search_album: str,
+    year: str,
+    mb_id: str,
+) -> list[dict]:
+    cached = await get_cached_album(artist, album, year=year, mb_id=mb_id)
+    if not cached and search_album != album:
+        cached = await get_cached_album(artist, search_album, year=year, mb_id=mb_id)
+    tracks = (cached or {}).get("tracks") or []
+    if tracks:
+        return tracks
+    if not artist or not search_album:
+        return []
+    try:
+        return await get_tracklist_with_fallback([], artist, search_album, mb_id=mb_id)
+    except Exception:
+        return []
 
 
 def _same_quality_value(wanted: str, found: str) -> bool:
@@ -329,6 +385,7 @@ async def search_torrents(
     album: str = Query(...),
     year: str = Query(default=""),
     cover_url: str = Query(default=""),
+    track_fallback: bool = Query(default=False),
     db: AsyncSession = Depends(get_db),
 ):
     search_album = normalize_album(album)
@@ -379,8 +436,31 @@ async def search_torrents(
     ops_rows = _build_torrent_rows(
         ops_results, artist, search_album, year, token_mode, quality_profile, media_scores
     )
+
+    can_track_fallback = bool(not red_rows and not red_error)
+    if track_fallback and not red_rows and not red_error:
+        tracks = await _album_tracks_for_tracker_fallback(artist, album, search_album, year, mb_id)
+        can_track_fallback = False
+        if tracks:
+            try:
+                red_track_results = await red_client.search_torrents_by_tracks(artist, search_album, tracks)
+                red_rows = _build_torrent_rows(
+                    red_track_results,
+                    artist,
+                    search_album,
+                    year,
+                    token_mode,
+                    quality_profile,
+                    media_scores,
+                )
+            except ValueError as e:
+                red_error = str(e)
+            except Exception:
+                red_rows = []
+
     torrent_list = _sort_torrent_rows(red_rows + ops_rows, quality_profile, media_scores)
-    source_note = _source_note(len(red_rows), len(ops_rows), ops_client.is_configured())
+    track_fallback_count = sum(1 for row in red_rows if row.get("match_source") == "track")
+    source_note = _source_note(len(red_rows), len(ops_rows), ops_client.is_configured(), track_fallback_count)
     ops_cross_seed_enabled = _truthy(settings.ops_cross_seed) and ops_client.is_configured()
 
     error = " / ".join(e for e in (red_error, ops_error) if e) if not torrent_list else ""
@@ -401,6 +481,8 @@ async def search_torrents(
         "quality_profile_label": quality_profile_label(quality_profile),
         "media_score_summary": media_score_summary(media_scores),
         "ops_cross_seed_enabled": ops_cross_seed_enabled,
+        "can_track_fallback": can_track_fallback and not track_fallback,
+        "track_fallback_active": track_fallback,
     })
 
 

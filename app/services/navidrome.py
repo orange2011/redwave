@@ -3,7 +3,7 @@ from datetime import datetime, timedelta
 from app.config import settings
 
 _collection_cache: dict = {"data": None, "expires": datetime.min}
-_COLLECTION_TTL = timedelta(seconds=60)
+_COLLECTION_TTL = timedelta(minutes=10)
 
 
 def _params(**extra) -> dict:
