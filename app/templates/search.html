@@ -19,7 +19,10 @@
   .search-hero h1 { width: min(75%, 1180px); box-sizing: border-box; padding-left: var(--search-text-offset); font-size: 1.5rem; line-height: 1.2; font-weight: 700; color: var(--text); margin: 0 auto; transform: translateX(var(--search-shift)); }
   .search-input-wrap { position: relative; width: min(75%, 1180px); margin: 0 auto; transform: translateX(var(--search-shift)); }
   .search-icon { position: absolute; left: 1rem; top: 50%; transform: translateY(-50%); color: var(--subtle); pointer-events: none; }
-  .search-input { width: 100%; background: var(--input-bg); border: 1px solid var(--input-border); border-radius: 999px; padding: 0.85rem 1rem 0.85rem 2.75rem; color: var(--input-text); font-size: 0.98rem; outline: none; box-shadow: 0 12px 32px rgba(0,0,0,0.25); }
+  .search-busy-icon { position: absolute; right: 1rem; top: 50%; width: 1.1rem; height: 1.1rem; margin-top: -0.55rem; border: 2px solid rgba(255,255,255,0.18); border-top-color: var(--accent); border-radius: 50%; opacity: 0; pointer-events: none; transform-origin: 50% 50%; }
+  .search-hero[data-loading="true"] .search-busy-icon { opacity: 1; animation: redwave-spin .8s linear infinite; }
+  .search-hero[data-loading="true"] .search-icon { color: var(--accent); }
+  .search-input { width: 100%; background: var(--input-bg); border: 1px solid var(--input-border); border-radius: 999px; padding: 0.85rem 2.75rem 0.85rem 2.75rem; color: var(--input-text); font-size: 0.98rem; outline: none; box-shadow: 0 12px 32px rgba(0,0,0,0.25); }
   .search-input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(192,57,43,0.28), 0 12px 32px rgba(0,0,0,0.25); }
   .search-quick-tabs {
     display: flex;
@@ -95,6 +98,9 @@
   .artist-name { color: var(--text); font-size: 0.9rem; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .artist-meta { color: var(--muted); font-size: 0.76rem; margin-top: 0.15rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .search-empty { color: var(--subtle); text-align: center; padding: 3rem 0; }
+  @keyframes redwave-spin {
+    to { transform: rotate(360deg); }
+  }
   .search-shell[data-filter="best"] #songs,
   .search-shell[data-filter="best"] .result-shelf,
   .search-shell[data-filter="songs"] #top-result,
@@ -144,6 +150,7 @@
       autofocus
       autocomplete="off"
     >
+    <span class="search-busy-icon" aria-hidden="true"></span>
   </div>
 </div>
 
@@ -154,20 +161,56 @@
 <script>
   const input = document.getElementById('search-input');
   const grid = document.getElementById('results-grid');
+  const hero = document.querySelector('.search-hero');
   let timer;
+  let searchController;
+  let activeSearchId = 0;
+
+  function setSearchLoading(isLoading) {
+    hero.dataset.loading = isLoading ? 'true' : 'false';
+    input.setAttribute('aria-busy', isLoading ? 'true' : 'false');
+  }
+
+  async function runSearch(q, { immediate = false } = {}) {
+    clearTimeout(timer);
+    const searchId = ++activeSearchId;
+    if (searchController) searchController.abort();
+    searchController = new AbortController();
+    setSearchLoading(Boolean(q));
+
+    try {
+      const res = await fetch(`/search?q=${encodeURIComponent(q)}`, {
+        headers: { 'HX-Request': 'true' },
+        signal: searchController.signal
+      });
+      if (searchId !== activeSearchId) return;
+      grid.innerHTML = await res.text();
+      window.hydrateSkeletonImages?.(grid);
+    } catch(e) {
+      if (e.name !== 'AbortError' && searchId === activeSearchId) {
+        grid.innerHTML = '<p class="search-empty">Search failed. Try again.</p>';
+      }
+    } finally {
+      if (searchId === activeSearchId) setSearchLoading(false);
+    }
+  }
 
   input.addEventListener('input', () => {
     clearTimeout(timer);
     const q = input.value.trim();
-    timer = setTimeout(async () => {
-      try {
-        const res = await fetch(`/search?q=${encodeURIComponent(q)}`, {
-          headers: { 'HX-Request': 'true' }
-        });
-        grid.innerHTML = await res.text();
-        window.hydrateSkeletonImages?.(grid);
-      } catch(e) {}
-    }, 400);
+    if (!q) {
+      if (searchController) searchController.abort();
+      setSearchLoading(false);
+      runSearch(q);
+      return;
+    }
+    timer = setTimeout(() => runSearch(q, { immediate: true }), 400);
+  });
+
+  input.addEventListener('keydown', (event) => {
+    if (event.key !== 'Enter') return;
+    event.preventDefault();
+    runSearch(input.value.trim(), { immediate: true });
   });
 
   grid.addEventListener('click', (event) => {

@@ -107,6 +107,24 @@
     border-color: var(--border);
     color: var(--text);
   }
+  .torrent-track-search-button {
+    align-items: center;
+    display: inline-flex;
+    gap: .5rem;
+    justify-content: center;
+  }
+  .torrent-button-spinner {
+    width: .85rem;
+    height: .85rem;
+    border: 2px solid rgba(255,255,255,.18);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: torrent-spin .8s linear infinite;
+    vertical-align: -0.12rem;
+  }
+  @keyframes torrent-spin {
+    to { transform: rotate(360deg); }
+  }
 </style>
 <div class="torrent-picker-overlay fixed inset-0 z-50 flex items-center justify-center p-4"
      onclick="if(event.target===this)this.remove()">
@@ -220,7 +238,7 @@
             <td style="padding:.65rem .75rem;">
               <a href="{{ t.tracker_url }}" target="_blank"
                  class="torrent-title-link">{{ t.title }}</a>
-              <span title="{{ 'Exact artist, album, and year match' if t.match_exact else 'Close tracker match; check the linked release before grabbing' }}"
+              <span title="{{ t.match_help or ('Exact artist, album, and year match' if t.match_exact else 'Close tracker match; check the linked release before grabbing') }}"
                     style="display:inline-block; margin-left:.35rem; border:1px solid {{ 'rgba(74,222,128,.35)' if t.match_exact else 'rgba(250,204,21,.35)' }}; color:{{ '#4ade80' if t.match_exact else '#facc15' }}; background:{{ 'rgba(74,222,128,.12)' if t.match_exact else 'rgba(250,204,21,.12)' }}; font-size:.62rem; line-height:1; padding:.16rem .32rem; border-radius:.2rem; vertical-align:middle;">{{ t.match_label }}</span>
             </td>
             <!-- Size -->
@@ -288,7 +306,22 @@
       {% else %}
       <div style="padding:3rem; text-align:center; color:var(--subtle);">
         <p>No results found on RED or OPS for this album.</p>
+        {% if can_track_fallback %}
+        <p style="font-size:.8rem; margin-top:.5rem; color:var(--subtle);">Try a slower tracklist search for uploads where the songs live under another RED group.</p>
+        <button type="button"
+                hx-get="/api/torrents/search?mb_id={{ mb_id }}&artist={{ artist | urlencode }}&album={{ album | urlencode }}&year={{ year }}&cover_url={{ cover_url | urlencode if cover_url else '' }}&track_fallback=1"
+                hx-target="#modal-container"
+                hx-indicator="#tracklist-search-spinner"
+                style="margin-top:1rem; box-shadow:0 0 0 1px rgba(192,57,43,0.45);"
+                class="torrent-close-button torrent-track-search-button">
+          <span id="tracklist-search-spinner" class="htmx-indicator torrent-button-spinner" aria-hidden="true"></span>
+          Search Tracklist
+        </button>
+        {% elif track_fallback_active %}
+        <p style="font-size:.8rem; margin-top:.5rem; color:var(--subtle);">No tracklist overlap found. Try searching manually on your trackers.</p>
+        {% else %}
         <p style="font-size:.8rem; margin-top:.5rem; color:var(--subtle);">Try searching manually on your trackers.</p>
+        {% endif %}
       </div>
       {% endif %}
     </div>

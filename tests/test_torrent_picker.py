@@ -7,6 +7,7 @@ from app.config import settings
 from app.routers.api.torrents import (
     _build_torrent_rows,
     _find_ops_cross_seed_match,
+    _match_text,
     _sort_torrent_rows,
     _source_note,
 )
@@ -110,6 +111,43 @@ class TorrentPickerTests(unittest.TestCase):
 
         self.assertEqual([row["red_group_id"] for row in rows], [1])
 
+    def test_rows_allow_track_fallback_when_album_group_title_differs(self):
+        groups = [
+            {
+                "artist": "Máté Péter",
+                "groupName": "A Different RED Group",
+                "groupYear": "1997",
+                "groupId": 2591442,
+                "_redwave_search_mode": "track_fallback",
+                "_redwave_track_hits": ["Elmegyek", "Most élsz"],
+                "_redwave_tracker": "red",
+                "_redwave_tracker_label": "RED",
+                "_redwave_group_url": "https://redacted.sh/torrents.php?id=2591442",
+                "torrents": [
+                    {"torrentId": 456, "format": "FLAC", "encoding": "Lossless", "media": "CD", "seeders": 8}
+                ],
+            }
+        ]
+
+        rows = _build_torrent_rows(
+            groups,
+            artist="Mate Peter",
+            album="Elmegyek",
+            year="1995",
+            token_mode="never",
+            quality_profile="flac_any",
+            media_scores={"CD": 100},
+        )
+
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["red_group_id"], 2591442)
+        self.assertEqual(rows[0]["match_label"], "Track")
+        self.assertEqual(rows[0]["match_source"], "track")
+        self.assertIn("Elmegyek", rows[0]["match_help"])
+
+    def test_match_text_folds_hungarian_accents(self):
+        self.assertEqual(_match_text("Máté Péter"), "mate peter")
+
     def test_picker_has_sortable_peer_and_quality_columns(self):
         template = Path("app/templates/partials/torrent_picker.html").read_text(encoding="utf-8")
 
@@ -139,6 +177,10 @@ class TorrentPickerTests(unittest.TestCase):
         self.assertIn("name=\"media\"", template)
         self.assertIn("name=\"remaster\"", template)
         self.assertIn("{{ t.match_label }}", template)
+        self.assertIn("Search Tracklist", template)
+        self.assertIn("track_fallback=1", template)
+        self.assertIn("tracklist-search-spinner", template)
+        self.assertIn("torrent-button-spinner", template)
 
     def test_combined_tracker_rows_prefer_red_before_equal_ops(self):
         rows = [
@@ -168,6 +210,12 @@ class TorrentPickerTests(unittest.TestCase):
         self.assertEqual(
             _source_note(4, 2, True),
             "Showing RED and OPS results (4 RED, 2 OPS).",
+        )
+
+    def test_source_note_mentions_track_fallback(self):
+        self.assertIn(
+            "album track titles",
+            _source_note(1, 0, True, track_fallback_count=1),
         )
 
     def test_ops_cross_seed_match_uses_exact_size(self):

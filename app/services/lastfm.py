@@ -1,10 +1,12 @@
 import asyncio
 from collections import Counter
+import time
 import httpx
 from app.config import settings
 from app.utils import normalize_album
 
 _mb_client = None
+_TRACK_GLOBAL_STATS_TTL_SECONDS = 6 * 60 * 60
 
 def _get_mb_client():
     global _mb_client
@@ -389,6 +391,7 @@ class LastFmClient:
 
     def __init__(self):
         self._client = httpx.AsyncClient(timeout=10.0)
+        self._track_global_stats_cache: dict[tuple[str, tuple[str, ...]], tuple[float, dict[str, dict[str, int]]]] = {}
 
     async def get_artist_info(self, artist: str) -> dict | None:
         try:
@@ -761,6 +764,17 @@ class LastFmClient:
         if not settings.lastfm_api_key or not artist or not tracks:
             return {}
 
+        track_names = tuple(
+            (track.get("name") or track.get("track") or "").strip().lower()
+            for track in tracks
+            if (track.get("name") or track.get("track") or "").strip()
+        )
+        cache_key = (artist.strip().lower(), track_names)
+        cached = self._track_global_stats_cache.get(cache_key)
+        now = time.monotonic()
+        if cached and cached[0] > now:
+            return {name: dict(values) for name, values in cached[1].items()}
+
         semaphore = asyncio.Semaphore(4)
 
         async def _fetch(track: dict) -> tuple[str, dict[str, int]] | None:
@@ -793,6 +807,9 @@ class LastFmClient:
                 continue
             name, track_stats = item
             stats[name] = track_stats
+        if len(self._track_global_stats_cache) > 256:
+            self._track_global_stats_cache.pop(next(iter(self._track_global_stats_cache)))
+        self._track_global_stats_cache[cache_key] = (now + _TRACK_GLOBAL_STATS_TTL_SECONDS, stats)
         return stats
 
     async def get_album_info(self, artist: str, album: str) -> dict | None:

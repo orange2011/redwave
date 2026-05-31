@@ -1,9 +1,13 @@
 import asyncio
+import copy
 import httpx
+import time
 import urllib.parse
 
 
 _client = None
+_PLATFORM_LINK_CACHE: dict[tuple[str, str, str, str, str, str, str, str], tuple[float, list[dict]]] = {}
+_PLATFORM_LINK_TTL_SECONDS = 12 * 60 * 60
 
 def _get_client():
     global _client
@@ -92,6 +96,21 @@ async def get_platform_links(artist: str, album: str, itunes_url: str = "",
                               mb_id: str = "",
                               spotify_id: str = "", spotify_secret: str = "",
                               qobuz_app_id: str = "", qobuz_token: str = "") -> list[dict]:
+    cache_key = (
+        artist.strip().lower(),
+        album.strip().lower(),
+        itunes_url.strip(),
+        mb_id.strip(),
+        spotify_id.strip(),
+        spotify_secret.strip(),
+        qobuz_app_id.strip(),
+        qobuz_token.strip(),
+    )
+    now = time.monotonic()
+    cached = _PLATFORM_LINK_CACHE.get(cache_key)
+    if cached and cached[0] > now:
+        return copy.deepcopy(cached[1])
+
     deezer, spotify, qobuz, discogs = await asyncio.gather(
         _deezer_link(artist, album),
         _spotify_link(artist, album, spotify_id, spotify_secret),
@@ -104,7 +123,7 @@ async def get_platform_links(artist: str, album: str, itunes_url: str = "",
     lastfm = f"https://www.last.fm/music/{urllib.parse.quote(artist)}/{urllib.parse.quote(album)}"
     mb = f"https://musicbrainz.org/release/{mb_id}" if mb_id else f"https://musicbrainz.org/search?query={q}&type=release"
 
-    return [
+    links = [
         {"name": "Spotify",       "url": spotify,  "color": "#1DB954"},
         {"name": "Apple Music",   "url": apple,    "color": "#FC3C44"},
         {"name": "Deezer",        "url": deezer,   "color": "#A238FF"},
@@ -113,3 +132,7 @@ async def get_platform_links(artist: str, album: str, itunes_url: str = "",
         {"name": "Last.fm",       "url": lastfm,   "color": "#D51007"},
         {"name": "MusicBrainz",   "url": mb,       "color": "#BA478F"},
     ]
+    if len(_PLATFORM_LINK_CACHE) > 256:
+        _PLATFORM_LINK_CACHE.pop(next(iter(_PLATFORM_LINK_CACHE)))
+    _PLATFORM_LINK_CACHE[cache_key] = (now + _PLATFORM_LINK_TTL_SECONDS, copy.deepcopy(links))
+    return links

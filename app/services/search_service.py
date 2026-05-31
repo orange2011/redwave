@@ -1,4 +1,6 @@
 import asyncio
+from copy import deepcopy
+from datetime import datetime, timedelta
 import html
 import re
 import unicodedata
@@ -13,6 +15,9 @@ _TOKEN_RE = re.compile(r"[a-z0-9]+")
 _ARTIST_SEPARATOR_RE = re.compile(r"\s*[•·;]\s*")
 _TRIM_RE = re.compile(r"^[\s\-_–—.,:;!?()\[\]{}\"']+|[\s\-_–—.,:;!?()\[\]{}\"']+$")
 _CONNECTOR_TOKENS = {"a", "an", "and", "at", "by", "for", "in", "of", "on", "the", "to", "with"}
+_TEXT_SEARCH_CACHE: dict[tuple[str, bool], dict] = {}
+_TEXT_SEARCH_TTL = timedelta(minutes=5)
+_TEXT_SEARCH_CACHE_LIMIT = 64
 
 
 def match_text(value: str) -> str:
@@ -484,7 +489,7 @@ async def _search_musicbrainz(query: str, limit: int = 10) -> list[dict]:
         return []
 
 
-async def _run_text_search(query: str, prefer_artist_albums: bool = False):
+async def _run_text_search_uncached(query: str, prefer_artist_albums: bool = False):
     collection, library, lfm_albums, lfm_artists, lfm_tracks = await asyncio.gather(
         get_collection(),
         search_library_variants(query, artist_count=5, album_count=14, song_count=12),
@@ -539,6 +544,20 @@ async def _run_text_search(query: str, prefer_artist_albums: bool = False):
     )[:8]
     artists = await fill_artist_images(artists, collection_hits + albums, tracks)
     return albums, artists, tracks, collection_hits
+
+
+async def _run_text_search(query: str, prefer_artist_albums: bool = False):
+    cache_key = (match_text(query) or query.strip().casefold(), prefer_artist_albums)
+    now = datetime.now()
+    cached = _TEXT_SEARCH_CACHE.get(cache_key)
+    if cached and now < cached["expires"]:
+        return deepcopy(cached["data"])
+
+    data = await _run_text_search_uncached(query, prefer_artist_albums)
+    if len(_TEXT_SEARCH_CACHE) > _TEXT_SEARCH_CACHE_LIMIT:
+        _TEXT_SEARCH_CACHE.pop(next(iter(_TEXT_SEARCH_CACHE)))
+    _TEXT_SEARCH_CACHE[cache_key] = {"data": deepcopy(data), "expires": now + _TEXT_SEARCH_TTL}
+    return data
 
 
 def _merge_resolved_artist(artists: list[dict], info: dict) -> list[dict]:

@@ -192,7 +192,13 @@ async def album_detail(
             "most_played_track": most_played_track,
         })
 
-    track_stats = await lastfm_client.get_track_global_stats(artist_name, tracks)
+    try:
+        track_stats = await asyncio.wait_for(
+            lastfm_client.get_track_global_stats(artist_name, tracks),
+            timeout=3.5,
+        )
+    except Exception:
+        track_stats = {}
     tracks, track_popularity_max = _attach_global_track_popularity(tracks, track_stats)
 
     return templates.TemplateResponse("album_detail.html", {
