@@ -330,6 +330,24 @@
                 ]) }}
               </div>
             </div>
+            <div class="settings-row">
+              <div class="settings-row-label">
+                <h3>Version</h3>
+                <p>Generated from the current Git commit.</p>
+              </div>
+              <div class="settings-fields">
+                <div class="settings-muted">
+                  <strong style="color:var(--text); font-size:.9rem;">{{ app_version.version }}</strong>
+                  {% if app_version.branch or app_version.short_commit %}
+                  <span>
+                    {% if app_version.branch %}{{ app_version.branch }}{% endif %}
+                    {% if app_version.branch and app_version.short_commit %} · {% endif %}
+                    {% if app_version.short_commit %}{{ app_version.short_commit }}{% endif %}
+                  </span>
+                  {% endif %}
+                </div>
+              </div>
+            </div>
           </div>
         </section>
 
