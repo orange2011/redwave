@@ -26,7 +26,6 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY app ./app
-COPY migrations ./migrations
 COPY scripts ./scripts
 COPY static ./static
 COPY --from=version /redwave-version.json ./redwave-version.json
