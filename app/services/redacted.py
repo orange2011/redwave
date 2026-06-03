@@ -27,6 +27,7 @@ _TRACKER_RATE_LIMIT_MESSAGES = (
     "rate-limit",
     "too many requests",
 )
+_VARIOUS_ARTIST_KEYS = {"various", "various artists", "v a", "va"}
 FREELEECH_TOKEN_MODES = {"never", "preferred", "required"}
 QUALITY_PROFILES = {
     "any": {
@@ -153,6 +154,10 @@ def _group_artist_matches(group: dict, artist: str) -> bool:
     wanted = normalize_artist(artist)
     found = normalize_artist(group.get("artist", ""))
     return bool(wanted and found and (wanted == found or wanted in found or found in wanted))
+
+
+def _group_is_various_artist(group: dict) -> bool:
+    return normalize_artist(group.get("artist", "")) in _VARIOUS_ARTIST_KEYS
 
 
 def _album_variants(album: str) -> list[str]:
@@ -460,6 +465,31 @@ class GazelleTrackerClient:
             if results:
                 break
 
+        if not results and artist:
+            r = await self._client.get(self.BASE_URL, params={
+                "action": "browse",
+                "artistname": _clean_query(artist),
+                "filter_cat[1]": 1,
+            })
+            if r.status_code in (301, 302, 303, 307, 308):
+                raise ValueError(f"{self.label} API key invalid or expired.")
+            self._raise_if_rate_limited(r)
+            r.raise_for_status()
+            data = r.json()
+            if data.get("status") == "success":
+                for group in data.get("response", {}).get("results", []):
+                    key = _group_key(group)
+                    if key in seen_group_ids:
+                        continue
+                    results.append(self._mark_group(group, album))
+                    seen_group_ids.add(key)
+            elif _looks_like_tracker_rate_limit(data.get("error", "")):
+                self._record_backoff()
+                raise TrackerRateLimitError(
+                    f"{self.label} reported a temporary ban/rate limit. "
+                    "Stop testing/searching it for a while; Redwave is backing off automatically."
+                )
+
         if len(self._search_cache) > 256:
             self._search_cache.pop(next(iter(self._search_cache)))
         self._search_cache[cache_key] = (now + TRACKER_SEARCH_CACHE_SECONDS, copy.deepcopy(results))
@@ -488,10 +518,18 @@ class GazelleTrackerClient:
         self._raise_if_backoff_active()
         results_by_key: dict[str, dict] = {}
         hits_by_key: dict[str, list[str]] = {}
+        artist_confirmed_keys: set[str] = set()
         minimum_hits = 1 if len(track_titles) == 1 else 2
         last_request_at = 0.0
-
+        query_specs: list[tuple[str, str, bool]] = []
         for track_title in track_titles:
+            query_specs.append((track_title, track_title, False))
+            if len(track_titles) == 1:
+                artist_track_query = _clean_query(f"{artist} {track_title}")
+                if artist_track_query and artist_track_query != track_title:
+                    query_specs.append((artist_track_query, track_title, True))
+
+        for query, track_title, artist_scoped in query_specs:
             if last_request_at:
                 elapsed = time.monotonic() - last_request_at
                 if elapsed < TRACKER_REQUEST_SPACING_SECONDS:
@@ -499,7 +537,7 @@ class GazelleTrackerClient:
             last_request_at = time.monotonic()
             r = await self._client.get(self.BASE_URL, params={
                 "action": "browse",
-                "filelist": track_title,
+                "filelist": query,
                 "filter_cat[1]": 1,
             })
             if r.status_code in (301, 302, 303, 307, 308):
@@ -522,17 +560,25 @@ class GazelleTrackerClient:
                 hits = hits_by_key.setdefault(key, [])
                 if track_title not in hits:
                     hits.append(track_title)
+                if artist_scoped:
+                    artist_confirmed_keys.add(key)
 
         matches = []
         for key, group in results_by_key.items():
             hits = hits_by_key.get(key, [])
             title_track_hit = any(_same_clean_text(hit, album) for hit in hits)
-            if len(hits) < minimum_hits and not (title_track_hit and _group_artist_matches(group, artist)):
+            artist_match = _group_artist_matches(group, artist)
+            artist_confirmed = key in artist_confirmed_keys
+            various_artist_match = _group_is_various_artist(group) and artist_confirmed
+            if len(track_titles) == 1 and not (artist_match or various_artist_match):
+                continue
+            if len(hits) < minimum_hits and not (title_track_hit and artist_match):
                 continue
             marked = self._mark_group(group, album)
             marked["_redwave_search_mode"] = "track_fallback"
             marked["_redwave_track_hits"] = hits
             marked["_redwave_track_hit_count"] = len(hits)
+            marked["_redwave_track_artist_confirmed"] = artist_confirmed
             matches.append(marked)
 
         matches.sort(key=lambda group: (

@@ -11,11 +11,68 @@ from app.services.platforms import get_platform_links
 from app.services.album_cache import get_cached_album, save_album_cache
 from app.models.request import AlbumRequest
 from app.database import get_db
-from app.utils import find_collection_album
+from app.utils import find_collection_album, normalize_artist
 from app.services.navidrome import get_album_tracks, get_collection
 from app.services.redacted import red_client
 
 router = APIRouter()
+_DASH_SPLIT_RE = re.compile(r"\s+-\s+")
+_WRAPPING_QUOTES = " \t\r\n\"'`“”„‟«»"
+
+
+def _strip_wrapping_quotes(value: str) -> str:
+    return (value or "").strip(_WRAPPING_QUOTES)
+
+
+def _collection_identity_candidates(artist: str, album: str) -> list[tuple[str, str]]:
+    """Return conservative artist/album variants for messy imported metadata."""
+    artist = (artist or "").strip()
+    album = (album or "").strip()
+    artists = [artist]
+    artist_parts = [part.strip() for part in _DASH_SPLIT_RE.split(artist) if part.strip()]
+    if len(artist_parts) > 1:
+        artists.append(artist_parts[-1])
+
+    pairs: list[tuple[str, str]] = []
+    seen: set[tuple[str, str]] = set()
+    for candidate_artist in artists:
+        album_variants = [album, _strip_wrapping_quotes(album)]
+        album_parts = _DASH_SPLIT_RE.split(album, maxsplit=1)
+        if (
+            len(album_parts) == 2
+            and normalize_artist(album_parts[0]) == normalize_artist(candidate_artist)
+        ):
+            album_variants.append(_strip_wrapping_quotes(album_parts[1]))
+
+        for candidate_album in album_variants:
+            key = (candidate_artist, candidate_album)
+            if candidate_artist and candidate_album and key not in seen:
+                pairs.append(key)
+                seen.add(key)
+    return pairs
+
+
+def _find_collection_album_with_cleanup(
+    artist: str,
+    album: str,
+    collection: list[dict],
+    *,
+    year: str = "",
+    mb_id: str = "",
+    cover_url: str = "",
+) -> dict | None:
+    for candidate_artist, candidate_album in _collection_identity_candidates(artist, album):
+        match = find_collection_album(
+            candidate_artist,
+            candidate_album,
+            collection,
+            year=year,
+            mb_id=mb_id,
+            cover_url=cover_url,
+        )
+        if match:
+            return match
+    return None
 
 
 async def _tracker_album_title_hint(artist: str, album: str, year: str) -> str:
@@ -81,11 +138,27 @@ async def album_detail(
     real_mb_id = mb_id if mb_id != "_" else ""
     requested_year = year.strip()[:4]
     collection = await get_collection()
+    initial_collection_match = _find_collection_album_with_cleanup(
+        artist,
+        album,
+        collection,
+        year=requested_year,
+        mb_id=real_mb_id,
+        cover_url=cover,
+    )
+    if initial_collection_match:
+        artist = initial_collection_match.get("artist") or artist
+        album = initial_collection_match.get("album") or album
+        if not requested_year:
+            requested_year = str(initial_collection_match.get("year") or "").strip()[:4]
+            year = requested_year
+        cover = cover or initial_collection_match.get("cover_url", "")
+
     if (
         artist
         and album
         and requested_year
-        and not find_collection_album(artist, album, collection, year=requested_year, mb_id=real_mb_id, cover_url=cover)
+        and not initial_collection_match
     ):
         album = await _tracker_album_title_hint(artist, album, requested_year)
 
@@ -161,16 +234,18 @@ async def album_detail(
     )
     existing_request = result.scalar_one_or_none()
 
-    collection_match = find_collection_album(
+    collection_match = _find_collection_album_with_cleanup(
         artist_name,
         album_title,
         collection,
         year=requested_year or year,
         mb_id=real_mb_id,
         cover_url=cover_url or "",
-    )
+    ) or initial_collection_match
     in_collection = bool(collection_match)
     if collection_match:
+        artist_name = collection_match.get("artist") or artist_name
+        album_title = collection_match.get("album") or album_title
         if requested_year and str(year or "")[:4] != requested_year:
             year = requested_year
             release_date = release_date if str(release_date or "").startswith(requested_year) else requested_year
