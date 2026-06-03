@@ -228,12 +228,15 @@
 </div>
 {% endmacro %}
 
-{% macro media_card(href, cover_url, title, subtitle, meta, in_collection=False) %}
+{% macro media_card(href, cover_url, title, subtitle, meta, in_collection=False, fallback_cover="") %}
 <a href="{{ href }}" class="media-card">
   {{ collection_badge(in_collection) }}
-  <div class="media-cover{% if cover_url %} skeleton-surface{% else %} has-error{% endif %}">
-    {% if cover_url %}
-    <img src="{{ cover_url }}" alt="{{ title }}" loading="lazy" onerror="this.parentElement.classList.add('has-error'); this.parentElement.innerHTML='♪'">
+  {% set image_url = cover_url or fallback_cover %}
+  <div class="media-cover{% if image_url %} skeleton-surface{% else %} has-error{% endif %}">
+    {% if image_url %}
+    <img src="{{ image_url }}" alt="{{ title }}" loading="lazy"
+         data-fallback-cover="{{ fallback_cover if cover_url and fallback_cover else '' }}"
+         onerror="redwaveHomeCoverFallback(this)">
     {% else %}
     ♪
     {% endif %}
@@ -320,7 +323,8 @@
         a.album,
         a.artist,
         a.year,
-        a.in_collection
+        a.in_collection,
+        "/api/collection/cover_lfm?artist=" ~ (a.artist | urlencode) ~ "&album=" ~ (a.album | urlencode)
       ) }}
       {% endfor %}
     </div>
@@ -367,6 +371,22 @@
 </div>
 
 <script>
+  window.redwaveHomeCoverFallback = function redwaveHomeCoverFallback(img) {
+    const fallback = img.dataset.fallbackCover;
+    const holder = img.closest('.media-cover');
+    if (fallback && !img.dataset.fallbackTried) {
+      const fallbackUrl = new URL(fallback, window.location.origin).href;
+      if (img.src !== fallbackUrl) {
+        img.dataset.fallbackTried = '1';
+        holder?.classList.remove('has-error');
+        img.src = fallback;
+        return;
+      }
+    }
+    holder?.classList.add('has-error');
+    if (holder) holder.innerHTML = '♪';
+  };
+
   document.addEventListener('click', (event) => {
     const button = event.target.closest('[data-scroll-dir]');
     if (!button) return;

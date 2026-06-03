@@ -145,8 +145,93 @@ class TorrentPickerTests(unittest.TestCase):
         self.assertEqual(rows[0]["match_source"], "track")
         self.assertIn("Elmegyek", rows[0]["match_help"])
 
+    def test_rows_reject_track_fallback_with_only_shared_artist_token(self):
+        groups = [
+            {
+                "artist": "The Kid Laroi",
+                "groupName": "BEFORE I FORGET",
+                "groupYear": "2026",
+                "groupId": 266,
+                "_redwave_search_mode": "track_fallback",
+                "_redwave_track_hits": ["I Love You So"],
+                "torrents": [
+                    {"torrentId": 456, "format": "FLAC", "encoding": "Lossless", "media": "CD", "seeders": 40}
+                ],
+            }
+        ]
+
+        rows = _build_torrent_rows(
+            groups,
+            artist="The Walters",
+            album="I Love You So",
+            year="2014",
+            token_mode="never",
+            quality_profile="flac_any",
+            media_scores={"CD": 100},
+        )
+
+        self.assertEqual(rows, [])
+
+    def test_rows_allow_artist_scoped_track_fallback_under_various_artists(self):
+        groups = [
+            {
+                "artist": "Various Artists",
+                "groupName": "A Carefully Named Compilation",
+                "groupYear": "2014",
+                "groupId": 267,
+                "_redwave_search_mode": "track_fallback",
+                "_redwave_track_hits": ["I Love You So"],
+                "_redwave_track_artist_confirmed": True,
+                "torrents": [
+                    {"torrentId": 456, "format": "FLAC", "encoding": "Lossless", "media": "CD", "seeders": 4}
+                ],
+            }
+        ]
+
+        rows = _build_torrent_rows(
+            groups,
+            artist="The Walters",
+            album="I Love You So",
+            year="2014",
+            token_mode="never",
+            quality_profile="flac_any",
+            media_scores={"CD": 100},
+        )
+
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["red_group_id"], 267)
+
+    def test_rows_allow_hebrew_album_match(self):
+        groups = [
+            {
+                "artist": "TRESPASSER",
+                "groupName": "יְהִי אוֹר",
+                "groupYear": "2026",
+                "groupId": 2664318,
+                "torrents": [
+                    {"torrentId": 456, "format": "FLAC", "encoding": "Lossless", "media": "WEB", "seeders": 8}
+                ],
+            }
+        ]
+
+        rows = _build_torrent_rows(
+            groups,
+            artist="TRESPASSER",
+            album="יהי אור",
+            year="2025",
+            token_mode="never",
+            quality_profile="flac_any",
+            media_scores={"WEB": 50},
+        )
+
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["red_group_id"], 2664318)
+
     def test_match_text_folds_hungarian_accents(self):
         self.assertEqual(_match_text("Máté Péter"), "mate peter")
+
+    def test_match_text_removes_hebrew_vowel_marks(self):
+        self.assertEqual(_match_text("יְהִי אוֹר"), _match_text("יהי אור"))
 
     def test_picker_has_sortable_peer_and_quality_columns(self):
         template = Path("app/templates/partials/torrent_picker.html").read_text(encoding="utf-8")

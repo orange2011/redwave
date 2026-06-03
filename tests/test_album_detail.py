@@ -3,7 +3,11 @@ import unittest
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
-from app.routers.album import _attach_global_track_popularity, _tracker_album_title_hint
+from app.routers.album import (
+    _attach_global_track_popularity,
+    _find_collection_album_with_cleanup,
+    _tracker_album_title_hint,
+)
 
 
 class AlbumDetailTests(unittest.TestCase):
@@ -18,6 +22,23 @@ class AlbumDetailTests(unittest.TestCase):
             title = asyncio.run(_tracker_album_title_hint("Weezer", "Weezer", "2019"))
 
         self.assertEqual(title, "Weezer (Black Album)")
+
+    def test_collection_cleanup_matches_catalog_prefixed_identity(self):
+        collection = [{
+            "artist": "TRESPASSER",
+            "album": "יְהִי אוֹר",
+            "year": "2025",
+        }]
+
+        match = _find_collection_album_with_cleanup(
+            "FKR#172 - TRESPASSER",
+            'TRESPASSER - "יְהִי אוֹר"',
+            collection,
+        )
+
+        self.assertIsNotNone(match)
+        self.assertEqual(match["artist"], "TRESPASSER")
+        self.assertEqual(match["album"], "יְהִי אוֹר")
 
     def test_album_and_artist_lightboxes_use_hq_helper(self):
         album_template = Path("app/templates/album_detail.html").read_text(encoding="utf-8")

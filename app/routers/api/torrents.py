@@ -50,16 +50,21 @@ def _fmt_size(b: int) -> str:
 _TOKEN_RE = re.compile(r"[a-z0-9]+")
 _STRICT_TEXT_RE = re.compile(r"[\w]+", re.UNICODE)
 OPS_CROSS_SEED_MATCH_POLICY = "payload-map-v2"
+_VARIOUS_ARTIST_KEYS = {"various", "various artists", "v a", "va"}
 
 
 def _match_text(value: str) -> str:
     value = unicodedata.normalize("NFKD", value or "")
+    value = "".join(ch for ch in value if not unicodedata.combining(ch))
     folded = value.encode("ascii", "ignore").decode("ascii")
     value = folded if _TOKEN_RE.search(folded) else unicodedata.normalize("NFKC", value)
     value = value.lower()
     value = value.replace("&", " and ")
     value = normalize_album(value)
-    return " ".join(_TOKEN_RE.findall(value))
+    tokens = _TOKEN_RE.findall(value)
+    if tokens:
+        return " ".join(tokens)
+    return " ".join(_STRICT_TEXT_RE.findall(value))
 
 
 def _tokens(value: str) -> set[str]:
@@ -80,6 +85,26 @@ def _text_score(wanted: str, found: str, exact_points: int, contains_points: int
 
 def _album_match_score(album: str, group_album: str) -> int:
     return _text_score(album, group_album, exact_points=12, contains_points=8, token_points=4)
+
+
+def _is_various_artist(value: str) -> bool:
+    return normalize_artist(value) in _VARIOUS_ARTIST_KEYS
+
+
+def _artist_matches_for_track_fallback(wanted: str, found: str, artist_confirmed: bool = False) -> bool:
+    wanted_artist = normalize_artist(wanted)
+    found_artist = normalize_artist(found)
+    if artist_confirmed and _is_various_artist(found):
+        return bool(wanted_artist)
+    return bool(
+        wanted_artist
+        and found_artist
+        and (
+            wanted_artist == found_artist
+            or wanted_artist in found_artist
+            or found_artist in wanted_artist
+        )
+    )
 
 
 def _strict_album_text(value: str) -> str:
@@ -157,6 +182,7 @@ def _build_torrent_rows(
         g_album = group.get("groupName", album)
         g_year = group.get("groupYear", year)
         track_hits = group.get("_redwave_track_hits") or []
+        track_artist_confirmed = bool(group.get("_redwave_track_artist_confirmed"))
         is_track_fallback = bool(group.get("_redwave_search_mode") == "track_fallback" and track_hits)
         artist_match_score = _text_score(artist, g_artist, exact_points=8, contains_points=5, token_points=3)
         album_score = _album_match_score(album, g_album)
@@ -164,7 +190,7 @@ def _build_torrent_rows(
         match_exact = _is_exact_group_match(group, artist, album, year)
         year_mismatch = bool(year and g_year and str(g_year) != str(year))
         if is_track_fallback:
-            if artist and artist_match_score <= 0:
+            if artist and not _artist_matches_for_track_fallback(artist, g_artist, track_artist_confirmed):
                 continue
             track_match_score = min(48, 4 * len(track_hits))
             if year and str(g_year) == str(year):
