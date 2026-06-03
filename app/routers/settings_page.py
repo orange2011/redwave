@@ -7,6 +7,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 from app.templates_config import templates
 from app.config import settings
+from app.services.version import get_app_version
 
 router = APIRouter()
 ENV_PATH = Path(".env")
@@ -149,6 +150,7 @@ async def settings_page(request: Request):
         "request": request,
         "env": env,
         "media_scores": media_scores,
+        "app_version": get_app_version(),
         "saved": request.query_params.get("saved"),
         "lastfm_connected": request.query_params.get("lastfm_connected"),
         "lastfm_error": request.query_params.get("lastfm_error"),
@@ -193,6 +195,7 @@ async def save_settings(request: Request):
         "request": request,
         "env": env,
         "media_scores": media_score_options(),
+        "app_version": get_app_version(),
         "saved": "1",
         "save_checks": save_checks,
         "save_failed": save_failed,
