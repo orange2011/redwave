@@ -13,12 +13,13 @@ from app.routers.album import (
 class AlbumDetailTests(unittest.TestCase):
     def test_tracker_album_hint_uses_requested_year(self):
         fake_red = type("FakeRed", (), {})()
+        fake_red.is_configured = lambda: True
         fake_red.search_torrents = AsyncMock(return_value=[
             {"groupName": "Weezer", "groupYear": "1994"},
             {"groupName": "Weezer (Black Album)", "groupYear": "2019"},
         ])
 
-        with patch("app.routers.album.red_client", fake_red):
+        with patch("app.routers.album.ordered_tracker_clients", return_value=[fake_red]):
             title = asyncio.run(_tracker_album_title_hint("Weezer", "Weezer", "2019"))
 
         self.assertEqual(title, "Weezer (Black Album)")

@@ -57,6 +57,37 @@ class SettingsTests(unittest.TestCase):
 
         self.assertIn("tests safe configured services", template)
         self.assertIn("Settings saved, but one or more checks failed", template)
+        self.assertIn("OPS Freeleech Tokens", template)
+        self.assertIn("OPS only", template)
+        self.assertIn("Configured - leave blank to keep", template)
+        self.assertIn("CLEAR_{{ key }}", template)
+
+    def test_sensitive_fields_are_preserved_when_submitted_blank(self):
+        self.assertIsNone(settings_page._submitted_setting_value({"RED_API_KEY": ""}, "RED_API_KEY"))
+        self.assertEqual(
+            settings_page._submitted_setting_value(
+                {"RED_API_KEY": "", "CLEAR_RED_API_KEY": "1"},
+                "RED_API_KEY",
+            ),
+            "",
+        )
+        self.assertEqual(
+            settings_page._submitted_setting_value({"RED_API_KEY": "replacement"}, "RED_API_KEY"),
+            "replacement",
+        )
+
+    def test_musicdir_error_does_not_echo_host_path(self):
+        old_value = settings.music_dir
+        object.__setattr__(settings, "music_dir", "C:/Users/example/private/music")
+        try:
+            response = asyncio.run(settings_page.test_musicdir())
+            data = asyncio.run(settings_page._response_json(response))
+        finally:
+            object.__setattr__(settings, "music_dir", old_value)
+
+        self.assertFalse(data["ok"])
+        self.assertNotIn("C:/Users", data["msg"])
+        self.assertEqual(data["msg"], "Configured music directory was not found.")
 
     def test_write_env_preserves_local_shape_and_backup(self):
         old_path = settings_page.ENV_PATH

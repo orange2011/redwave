@@ -5,9 +5,9 @@
   {% if album_request.status == "downloading" %}
   ✓ Sent {{ tracker_label or "torrent" }} to qBittorrent — {{ artist }} · {{ album }}
   {% if cross_seed_status == "queued" %}
-  <div class="text-xs opacity-90 mt-1">OPS cross-seed will be added after the RED torrent completes; file manifest matched or mapped.</div>
+  <div class="text-xs opacity-90 mt-1">{{ cross_seed_target_label or "Opposite tracker" }} cross-seed will be added after the {{ cross_seed_source_label or tracker_label or "selected" }} torrent completes; file manifest matched or mapped.</div>
   {% elif cross_seed_status == "no_match" %}
-  <div class="text-xs opacity-90 mt-1">No safe OPS cross-seed match was found.</div>
+  <div class="text-xs opacity-90 mt-1">No safe {{ cross_seed_target_label or "opposite tracker" }} cross-seed match was found.</div>
   {% endif %}
   {% else %}
   ✗ Failed to send to qBittorrent

@@ -209,8 +209,8 @@
     <input
       type="{{ 'password' if password else 'text' }}"
       name="{{ key }}"
-      value="{{ env.get(key, '') }}"
-      placeholder="{{ placeholder }}"
+      value="{{ '' if password else env.get(key, '') }}"
+      placeholder="{{ 'Configured - leave blank to keep' if password and env.get(key, '') else placeholder }}"
       autocomplete="off"
       class="flex-1 bg-white border border-gray-300 text-gray-900 placeholder-gray-400 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent">
     {% if test %}
@@ -220,6 +220,12 @@
     </button>
     {% endif %}
   </div>
+  {% if password and env.get(key, '') %}
+  <label class="mt-2 flex items-center gap-2 text-xs" style="color:var(--muted);">
+    <input type="checkbox" name="CLEAR_{{ key }}" value="1">
+    <span>Clear saved value</span>
+  </label>
+  {% endif %}
   {% if test %}<div class="test-status text-xs mt-1"></div>{% endif %}
 </div>
 {% endmacro %}
@@ -268,7 +274,7 @@
 
 <div class="settings-shell">
   <h1 class="text-2xl font-bold text-white mb-2">Settings</h1>
-  <p class="text-muted text-sm mb-8">Configure Redwave, RED search, metadata sources, and downloads.</p>
+  <p class="text-muted text-sm mb-8">Configure Redwave, tracker search, metadata sources, and downloads.</p>
 
   {% if saved %}
   <div class="mb-6 px-4 py-3 rounded-lg text-sm font-medium"
@@ -303,7 +309,7 @@
       <aside class="settings-sidebar" aria-label="Settings sections">
         <div class="settings-sidebar-title">Settings</div>
         <a href="#general" class="settings-nav-link">General <span>Theme</span></a>
-        <a href="#red" class="settings-nav-link">RED <span>Search</span></a>
+        <a href="#trackers" class="settings-nav-link">Trackers <span>RED / OPS</span></a>
         <a href="#library" class="settings-nav-link">Library <span>Navidrome</span></a>
         <a href="#metadata" class="settings-nav-link">Metadata <span>Last.fm</span></a>
         <a href="#downloads" class="settings-nav-link">Downloads <span>qBittorrent</span></a>
@@ -351,34 +357,64 @@
           </div>
         </section>
 
-        <section id="red" class="settings-panel">
+        <section id="trackers" class="settings-panel">
           <div class="settings-panel-header">
-            <h2>RED</h2>
-            <p>Control RED lookups, torrent quality filtering, and freeleech token behavior.</p>
+            <h2>Trackers</h2>
+            <p>Choose which music trackers Redwave searches and which one appears first.</p>
           </div>
           <div class="settings-panel-body">
             <div class="settings-row">
               <div class="settings-row-label">
-                <h3>Connection</h3>
-                <p>Used for RED searches, torrent metadata, and torrent downloads.</p>
+                <h3>Search Order</h3>
+                <p>Single-tracker modes prevent all searches and tracklist fallbacks from calling the other tracker.</p>
               </div>
               <div class="settings-fields">
-                {{ field("RED_API_KEY", "API Key", env, password=True, test="red") }}
+                {{ select_field("TRACKER_MODE", "Search Mode", env, [
+                  ("both", "Both trackers"),
+                  ("red", "RED only"),
+                  ("ops", "OPS only")
+                ]) }}
+                {{ select_field("PRIMARY_TRACKER", "Primary Tracker", env, [
+                  ("red", "RED"),
+                  ("ops", "OPS")
+                ], "When both are enabled, equally ranked results from the primary tracker appear first.") }}
               </div>
             </div>
             <div class="settings-row">
               <div class="settings-row-label">
-                <h3>OPS Fallback</h3>
-                <p>Used only when RED has no matching release. The same quality and media ranking is applied.</p>
+                <h3>RED</h3>
+                <p>API access and RED-specific freeleech token behavior.</p>
+              </div>
+              <div class="settings-fields">
+                {{ field("RED_API_KEY", "RED API Key", env, password=True, test="red") }}
+                {{ select_field("RED_USE_FREELEECH_TOKEN", "RED Freeleech Tokens", env, [
+                  ("never", "Never - do not use tokens"),
+                  ("preferred", "Preferred - use a token when possible"),
+                  ("required", "Required - hide/abort torrents that cannot use a token")
+                ], "Existing freeleech torrents never spend a token.") }}
+              </div>
+            </div>
+            <div class="settings-row">
+              <div class="settings-row-label">
+                <h3>OPS</h3>
+                <p>OPS can be primary, secondary, or the only enabled tracker.</p>
               </div>
               <div class="settings-fields">
                 {{ field("OPS_API_KEY", "OPS API Key", env, password=True, test="ops") }}
+                {{ select_field("OPS_USE_FREELEECH_TOKEN", "OPS Freeleech Tokens", env, [
+                  ("never", "Never - do not use tokens"),
+                  ("preferred", "Preferred - use a token when possible"),
+                  ("required", "Required - hide/abort torrents that cannot use a token")
+                ], "OPS supports tokenized downloads through its API. Preferred retries without a token if OPS refuses it.") }}
+                <a href="https://orpheus.network/bonus.php" target="_blank" rel="noreferrer"
+                   class="settings-link">Open OPS Bonus Shop</a>
+                <p class="settings-muted">Purchases remain manual because OPS does not expose its bonus shop through the API-token interface.</p>
               </div>
             </div>
             <div class="settings-row">
               <div class="settings-row-label">
                 <h3>Search Preferences</h3>
-                <p>These preferences rank RED results. They do not hide other torrents.</p>
+                <p>These preferences rank results from either tracker. They do not hide other formats.</p>
               </div>
               <div class="settings-fields">
                 {{ select_field("RED_QUALITY_PROFILE", "Preferred Quality", env, [
@@ -402,11 +438,6 @@
                     Higher numbers move that media up. Negative numbers bury it. Set Vinyl to 500 if you want vinyl rips to win.
                   </p>
                 </div>
-                {{ select_field("RED_USE_FREELEECH_TOKEN", "Use Freeleech Tokens", env, [
-                  ("never", "Never - do not use tokens"),
-                  ("preferred", "Preferred - use a token when possible"),
-                  ("required", "Required - hide/abort torrents that cannot use a token")
-                ], "Existing freeleech torrents never spend a token.") }}
               </div>
             </div>
           </div>
@@ -435,7 +466,7 @@
                 <p>Used only as a local fallback when Navidrome does not have cover art.</p>
               </div>
               <div class="settings-fields">
-                {{ field("MUSIC_DIR", "Music Directory", env, placeholder="W:/media/music", test="musicdir") }}
+                {{ field("MUSIC_DIR", "Music Directory", env, placeholder="/music", test="musicdir") }}
               </div>
             </div>
           </div>
@@ -513,7 +544,7 @@
             <div class="settings-row">
               <div class="settings-row-label">
                 <h3>qBittorrent</h3>
-                <p>Used after you choose a RED torrent and press Grab. In Docker, use the qBittorrent service/container name, not localhost.</p>
+                <p>Used after you choose a tracker result and press Grab. In Docker, use the qBittorrent service/container name, not localhost.</p>
               </div>
               <div class="settings-fields">
                 {{ field("QBT_HOST", "Host URL", env, placeholder="http://localhost:8080", test="qbittorrent") }}
@@ -527,7 +558,7 @@
                 {{ field("QBT_CATEGORY", "Torrent Category", env, placeholder="music") }}
                 {{ field("QBT_RED_TAG", "RED Tag", env, placeholder="RED") }}
                 {{ field("QBT_OPS_TAG", "OPS Tag", env, placeholder="OPS") }}
-                {{ checkbox_field("OPS_CROSS_SEED", "Add OPS cross-seed after RED completes", env, "When a grabbed RED torrent finishes, Redwave only adds OPS when the torrent payload manifest matches or can be safely mapped to the RED files.") }}
+                {{ checkbox_field("OPS_CROSS_SEED", "Add matching cross-seed after RED or OPS completes", env, "When a grabbed RED or OPS torrent finishes, Redwave only adds the opposite tracker when the torrent payload manifest matches or can be safely mapped to the completed files.") }}
               </div>
             </div>
           </div>

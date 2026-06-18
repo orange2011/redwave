@@ -29,6 +29,8 @@ _TRACKER_RATE_LIMIT_MESSAGES = (
 )
 _VARIOUS_ARTIST_KEYS = {"various", "various artists", "v a", "va"}
 FREELEECH_TOKEN_MODES = {"never", "preferred", "required"}
+TRACKER_MODES = {"both", "red", "ops"}
+TRACKER_NAMES = {"red", "ops"}
 QUALITY_PROFILES = {
     "any": {
         "label": "Any quality",
@@ -192,6 +194,22 @@ def token_mode_label(value: str | None) -> str:
         "preferred": "Preferred",
         "required": "Required",
     }[normalize_token_mode(value)]
+
+
+def normalize_tracker_name(value: str | None) -> str:
+    tracker = (value or "red").strip().lower()
+    return tracker if tracker in TRACKER_NAMES else "red"
+
+
+def normalize_tracker_mode(value: str | None) -> str:
+    mode = (value or "both").strip().lower()
+    return mode if mode in TRACKER_MODES else "both"
+
+
+def tracker_token_mode(tracker: str | None) -> str:
+    tracker = normalize_tracker_name(tracker)
+    setting = settings.ops_use_freeleech_token if tracker == "ops" else settings.red_use_freeleech_token
+    return normalize_token_mode(setting)
 
 
 def normalize_quality_profile(value: str | None) -> str:
@@ -367,7 +385,7 @@ class GazelleTrackerClient:
         self.SITE_URL = site_url.rstrip("/")
         self.api_key_attr = api_key_attr
         self._client = httpx.AsyncClient(
-            headers={"Authorization": self.api_key},
+            headers={"Authorization": self.authorization_header},
             timeout=15.0,
             follow_redirects=False,
         )
@@ -378,11 +396,18 @@ class GazelleTrackerClient:
     def api_key(self) -> str:
         return getattr(settings, self.api_key_attr, "")
 
+    @property
+    def authorization_header(self) -> str:
+        api_key = self.api_key.strip()
+        if self.tracker == "ops" and api_key and not api_key.lower().startswith("token "):
+            return f"token {api_key}"
+        return api_key
+
     def is_configured(self) -> bool:
         return bool(self.api_key.strip())
 
     def _sync_auth_header(self):
-        self._client.headers["Authorization"] = self.api_key
+        self._client.headers["Authorization"] = self.authorization_header
 
     def _raise_if_backoff_active(self):
         cooldown_until = _TRACKER_BACKOFF_UNTIL.get(self.tracker, 0)
@@ -596,13 +621,13 @@ class GazelleTrackerClient:
             raise ValueError(f"{self.label} API key is not configured.")
         self._sync_auth_header()
         self._raise_if_backoff_active()
-        token_mode = normalize_token_mode(token_mode or settings.red_use_freeleech_token)
+        token_mode = normalize_token_mode(token_mode or tracker_token_mode(self.tracker))
         params = {
             "action": "download",
             "id": torrent_id,
         }
-        if self.tracker == "red":
-            params["usetoken"] = 1 if use_token else 0
+        if use_token:
+            params["usetoken"] = 1
         r = await self._client.get(self.BASE_URL, params=params)
         self._raise_if_rate_limited(r)
         r.raise_for_status()
@@ -612,14 +637,13 @@ class GazelleTrackerClient:
             r = await self._client.get(self.BASE_URL, params={
                 "action": "download",
                 "id": torrent_id,
-                "usetoken": 0,
             })
             self._raise_if_rate_limited(r)
             r.raise_for_status()
             return r.content
 
         if use_token and token_mode == "required" and not _looks_like_torrent(content) and _has_token_error(content):
-            raise ValueError("RED could not apply a freeleech token to this torrent.")
+            raise ValueError(f"{self.label} could not apply a freeleech token to this torrent.")
 
         return content
 
@@ -717,4 +741,31 @@ TRACKER_CLIENTS = {
 
 
 def tracker_client_for(value: str | None) -> GazelleTrackerClient:
-    return TRACKER_CLIENTS.get((value or "red").strip().lower(), red_client)
+    return TRACKER_CLIENTS[normalize_tracker_name(value)]
+
+
+def enabled_tracker_names(mode: str | None = None) -> list[str]:
+    mode = normalize_tracker_mode(mode or settings.tracker_mode)
+    if mode == "red":
+        return ["red"]
+    if mode == "ops":
+        return ["ops"]
+    return ["red", "ops"]
+
+
+def ordered_tracker_names(
+    mode: str | None = None,
+    primary: str | None = None,
+) -> list[str]:
+    enabled = enabled_tracker_names(mode)
+    primary = normalize_tracker_name(primary or settings.primary_tracker)
+    if primary in enabled:
+        return [primary, *(name for name in enabled if name != primary)]
+    return enabled
+
+
+def ordered_tracker_clients(
+    mode: str | None = None,
+    primary: str | None = None,
+) -> list[GazelleTrackerClient]:
+    return [TRACKER_CLIENTS[name] for name in ordered_tracker_names(mode, primary)]

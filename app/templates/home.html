@@ -322,7 +322,7 @@
 
   {% if red_top %}
   <section class="home-section">
-    {{ shelf_head("Top on RED Today", "redacted.sh") }}
+    {{ shelf_head("Top on " ~ (tracker_top_label or "Tracker") ~ " Today", tracker_top_site) }}
     <div class="media-row" tabindex="0">
       {% for a in red_top %}
       {{ media_card(

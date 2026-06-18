@@ -98,7 +98,7 @@ async def collection_page(
 async def serve_cover(folder: str = Query(...), embedded: int = Query(default=0)):
     """Serve cover art: cover file → embedded FLAC tag → Last.fm redirect."""
     target = (MUSIC_DIR / folder).resolve()
-    if not str(target).startswith(str(MUSIC_DIR.resolve())):
+    if not target.is_relative_to(MUSIC_DIR.resolve()):
         return JSONResponse({"error": "forbidden"}, status_code=403)
 
     # 1. Cover file on disk

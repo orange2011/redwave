@@ -4,7 +4,7 @@ import html
 import httpx
 import urllib.parse
 
-from app.services.redacted import red_client
+from app.services.redacted import enabled_tracker_names, tracker_client_for
 
 _client = None
 
@@ -78,7 +78,7 @@ def _red_artist_names(music_info: dict) -> list[str]:
     return names
 
 
-def _red_group_result(group_id: str, data: dict) -> dict | None:
+def _tracker_group_result(group_id: str, data: dict, tracker: str) -> dict | None:
     group = data.get("group") or {}
     if not group:
         return None
@@ -94,7 +94,7 @@ def _red_group_result(group_id: str, data: dict) -> dict | None:
         "cover_url": group.get("wikiImage") or None,
         "mb_id": "",
         "year": str(group.get("year") or ""),
-        "source": "red",
+        "source": tracker,
         "red_group_id": group_id,
         "red_summary": _red_summary(body),
         "red_tags": group.get("tags") or [],
@@ -105,28 +105,44 @@ async def resolve_url(url: str) -> dict | None:
     """Resolve a music platform URL to album or artist info."""
     url = url.strip()
 
-    # RED torrent group: https://redacted.sh/torrents.php?id=2786495
-    m = re.match(r'https?://(?:www\.)?redacted\.sh/torrents\.php\?(?:[^#]*&)?id=(\d+)', url)
+    # Gazelle tracker torrent group.
+    m = re.match(
+        r'https?://(?:www\.)?(redacted\.sh|orpheus\.network)/torrents\.php\?(?:[^#]*&)?id=(\d+)',
+        url,
+    )
     if m:
-        group_id = m.group(1)
+        tracker = "red" if m.group(1) == "redacted.sh" else "ops"
+        group_id = m.group(2)
+        if tracker not in enabled_tracker_names():
+            return None
         try:
-            return _red_group_result(group_id, await red_client.get_torrent_group(group_id))
+            return _tracker_group_result(
+                group_id,
+                await tracker_client_for(tracker).get_torrent_group(group_id),
+                tracker,
+            )
         except Exception:
             return None
 
-    # RED artist: https://redacted.sh/artist.php?id=10530 or ?artistname=F.S.Blumm
-    m = re.match(r'https?://(?:www\.)?redacted\.sh/artist\.php\?([^#]+)', url)
+    # Gazelle tracker artist.
+    m = re.match(
+        r'https?://(?:www\.)?(redacted\.sh|orpheus\.network)/artist\.php\?([^#]+)',
+        url,
+    )
     if m:
-        query = urllib.parse.parse_qs(m.group(1))
+        tracker = "red" if m.group(1) == "redacted.sh" else "ops"
+        if tracker not in enabled_tracker_names():
+            return None
+        query = urllib.parse.parse_qs(m.group(2))
         try:
-            info = await red_client.get_artist_info(
+            info = await tracker_client_for(tracker).get_artist_info(
                 artist_id=(query.get("id") or [""])[0],
                 artist_name=(query.get("artistname") or [""])[0],
             )
             return _artist_result(
                 info.get("name", ""),
                 info.get("image") or None,
-                source="red",
+                source=tracker,
             )
         except Exception:
             return None

@@ -17,6 +17,9 @@ _tracker_test_backoff: dict[str, float] = {}
 SETTINGS_ENV_TO_ATTR = {
     "RED_API_KEY": "red_api_key",
     "RED_USE_FREELEECH_TOKEN": "red_use_freeleech_token",
+    "OPS_USE_FREELEECH_TOKEN": "ops_use_freeleech_token",
+    "TRACKER_MODE": "tracker_mode",
+    "PRIMARY_TRACKER": "primary_tracker",
     "RED_QUALITY_PROFILE": "red_quality_profile",
     "RED_MEDIA_PREFERENCE": "red_media_preference",
     "RED_MEDIA_SCORE_CD": "red_media_score_cd",
@@ -50,8 +53,8 @@ SETTINGS_ENV_TO_ATTR = {
 }
 
 SETTINGS_FORM_FIELDS = [
-    "RED_API_KEY", "RED_USE_FREELEECH_TOKEN", "RED_QUALITY_PROFILE",
-    "OPS_API_KEY",
+    "RED_API_KEY", "RED_USE_FREELEECH_TOKEN", "OPS_USE_FREELEECH_TOKEN",
+    "TRACKER_MODE", "PRIMARY_TRACKER", "RED_QUALITY_PROFILE", "OPS_API_KEY",
     "RED_MEDIA_SCORE_CD", "RED_MEDIA_SCORE_WEB", "RED_MEDIA_SCORE_VINYL", "RED_MEDIA_SCORE_CASSETTE",
     "RED_MEDIA_SCORE_SACD", "RED_MEDIA_SCORE_BLU_RAY", "RED_MEDIA_SCORE_DVD", "RED_MEDIA_SCORE_SOUNDBOARD",
     "LASTFM_API_KEY", "LASTFM_SHARED_SECRET", "LASTFM_USERNAME",
@@ -63,6 +66,16 @@ SETTINGS_FORM_FIELDS = [
     "LISTENBRAINZ_USERNAME",
     "APP_THEME",
 ]
+SENSITIVE_FORM_FIELDS = {
+    "RED_API_KEY",
+    "OPS_API_KEY",
+    "LASTFM_API_KEY",
+    "LASTFM_SHARED_SECRET",
+    "NAVIDROME_PASS",
+    "LISTENBRAINZ_TOKEN",
+    "DISCOGS_TOKEN",
+    "QBT_PASSWORD",
+}
 
 
 def _read_env() -> dict[str, str]:
@@ -139,6 +152,15 @@ def _env_with_live_settings_defaults() -> dict[str, str]:
     return env
 
 
+def _submitted_setting_value(form, field: str) -> str | None:
+    value = form.get(field, "").strip()
+    if field not in SENSITIVE_FORM_FIELDS:
+        return value
+    if form.get(f"CLEAR_{field}", "") == "1":
+        return ""
+    return value or None
+
+
 @router.get("/settings", response_class=HTMLResponse)
 async def settings_page(request: Request):
     env = _env_with_live_settings_defaults()
@@ -165,9 +187,20 @@ async def save_settings(request: Request):
     for removed in removed_keys:
         env.pop(removed, None)
     for f in SETTINGS_FORM_FIELDS:
-        val = form.get(f, "").strip()
+        val = _submitted_setting_value(form, f)
+        if val is None:
+            continue
         if f == "APP_THEME" and val not in {"redwave", "black", "light"}:
             val = "redwave"
+        if f == "TRACKER_MODE":
+            from app.services.redacted import normalize_tracker_mode
+            val = normalize_tracker_mode(val)
+        if f == "PRIMARY_TRACKER":
+            from app.services.redacted import normalize_tracker_name
+            val = normalize_tracker_name(val)
+        if f in {"RED_USE_FREELEECH_TOKEN", "OPS_USE_FREELEECH_TOKEN"}:
+            from app.services.redacted import normalize_token_mode
+            val = normalize_token_mode(val)
         if f == "RED_QUALITY_PROFILE":
             from app.services.redacted import normalize_quality_profile
             val = normalize_quality_profile(val)
@@ -188,6 +221,8 @@ async def save_settings(request: Request):
     if env.get("MUSIC_DIR"):
         from app.services import scanner
         scanner.MUSIC_DIR = Path(env["MUSIC_DIR"])
+    from app.services.home_cache import schedule_home_cache_refresh_if_stale
+    schedule_home_cache_refresh_if_stale(force=True)
     save_checks = await _run_configured_save_checks(env)
     save_failed = any(check.get("ok") is False for check in save_checks)
     from app.services.redacted import media_score_options
@@ -220,8 +255,8 @@ async def test_lastfm():
         if data.get("user"):
             return JSONResponse({"ok": True, "msg": f"Connected as {data['user']['name']} ({data['user']['playcount']} scrobbles)"})
         return JSONResponse({"ok": False, "msg": data.get("message", "Invalid API key or username")})
-    except Exception as e:
-        return JSONResponse({"ok": False, "msg": str(e)})
+    except Exception:
+        return JSONResponse({"ok": False, "msg": "Last.fm connection check failed."})
 
 
 @router.get("/api/settings/test/lastfm-secret")
@@ -248,8 +283,8 @@ async def test_lastfm_secret():
         if data.get("token"):
             return JSONResponse({"ok": True, "msg": "Shared secret is valid — auth token obtained"})
         return JSONResponse({"ok": False, "msg": data.get("message", "Invalid secret or API key")})
-    except Exception as e:
-        return JSONResponse({"ok": False, "msg": str(e)})
+    except Exception:
+        return JSONResponse({"ok": False, "msg": "Last.fm shared-secret check failed."})
 
 
 @router.get("/api/settings/test/red")
@@ -269,10 +304,17 @@ async def test_ops():
         label="OPS",
         url="https://orpheus.network/ajax.php",
         api_key=settings.ops_api_key,
+        token_prefix=True,
     )
 
 
-async def _test_gazelle_index(key: str, label: str, url: str, api_key: str) -> JSONResponse:
+async def _test_gazelle_index(
+    key: str,
+    label: str,
+    url: str,
+    api_key: str,
+    token_prefix: bool = False,
+) -> JSONResponse:
     import httpx
     if not api_key.strip():
         return JSONResponse({"ok": False, "msg": f"No {label} API key configured"})
@@ -284,8 +326,11 @@ async def _test_gazelle_index(key: str, label: str, url: str, api_key: str) -> J
             "msg": f"{label} recently reported a temporary ban/rate limit. Redwave will not retest for about {minutes} minutes.",
         })
     try:
+        authorization = api_key.strip()
+        if token_prefix and authorization and not authorization.lower().startswith("token "):
+            authorization = f"token {authorization}"
         r = httpx.get(url, params={"action": "index"},
-                      headers={"Authorization": api_key},
+                      headers={"Authorization": authorization},
                       timeout=10, follow_redirects=False)
         if r.status_code in (301, 302, 303, 307, 308):
             return JSONResponse({"ok": False, "msg": f"{label} API key invalid or expired (redirect)"})
@@ -308,8 +353,8 @@ async def _test_gazelle_index(key: str, label: str, url: str, api_key: str) -> J
                 "msg": f"{label} says your IP is temporarily banned/rate-limited. Stop testing/searching it for a while.",
             })
         return JSONResponse({"ok": False, "msg": data.get("error", "Unknown error")})
-    except Exception as e:
-        return JSONResponse({"ok": False, "msg": str(e)})
+    except Exception:
+        return JSONResponse({"ok": False, "msg": f"{label} connection check failed."})
 
 
 def _looks_like_tracker_rate_limit(value: str) -> bool:
@@ -333,8 +378,8 @@ async def test_listenbrainz():
         if data.get("valid"):
             return JSONResponse({"ok": True, "msg": f"Connected as {data.get('user_name', '')}"})
         return JSONResponse({"ok": False, "msg": data.get("message", "Invalid token")})
-    except Exception as e:
-        return JSONResponse({"ok": False, "msg": str(e)})
+    except Exception:
+        return JSONResponse({"ok": False, "msg": "ListenBrainz connection check failed."})
 
 
 @router.get("/api/settings/test/discogs")
@@ -349,8 +394,8 @@ async def test_discogs():
         if data.get("username"):
             return JSONResponse({"ok": True, "msg": f"Connected as {data['username']}"})
         return JSONResponse({"ok": False, "msg": data.get("message", "Invalid token")})
-    except Exception as e:
-        return JSONResponse({"ok": False, "msg": str(e)})
+    except Exception:
+        return JSONResponse({"ok": False, "msg": "Discogs connection check failed."})
 
 
 @router.get("/api/settings/test/qbittorrent")
@@ -367,23 +412,8 @@ async def test_qbittorrent():
         if version:
             msg += f" ({version})"
         return JSONResponse({"ok": True, "msg": msg})
-    except Exception as e:
-        return JSONResponse({"ok": False, "msg": str(e)})
-
-
-
-@router.get("/api/debug/red-top")
-async def debug_red_top():
-    import httpx
-    try:
-        r = await httpx.AsyncClient(timeout=10).get(
-            "https://redacted.sh/ajax.php",
-            params={"action": "top10", "type": "torrents", "limit": 3, "way": "week"},
-            headers={"Authorization": settings.red_api_key},
-        )
-        return r.json()
-    except Exception as e:
-        return {"error": str(e)}
+    except Exception:
+        return JSONResponse({"ok": False, "msg": "qBittorrent connection check failed."})
 
 
 @router.get("/api/settings/test/navidrome")
@@ -407,8 +437,8 @@ async def test_navidrome():
                 return JSONResponse({"ok": True, "msg": f"Connected to Navidrome"})
             err = data.get("subsonic-response", {}).get("error", {}).get("message", "Auth failed")
             return JSONResponse({"ok": False, "msg": err})
-    except Exception as e:
-        return JSONResponse({"ok": False, "msg": str(e)})
+    except Exception:
+        return JSONResponse({"ok": False, "msg": "Navidrome connection check failed."})
 
 
 @router.get("/api/settings/test/musicdir")
@@ -426,7 +456,7 @@ async def test_musicdir():
     if p.exists() and p.is_dir():
         count = sum(1 for _ in p.iterdir() if _.is_dir())
         return JSONResponse({"ok": True, "msg": f"Found — {count} entries"})
-    return JSONResponse({"ok": False, "msg": f"Path not found: {p}"})
+    return JSONResponse({"ok": False, "msg": "Configured music directory was not found."})
 
 
 async def _response_json(response: JSONResponse) -> dict:
@@ -498,8 +528,8 @@ async def lastfm_auth_redirect():
         if not token:
             err = urllib.parse.quote(data.get("message", "failed to get token"))
             return RedirectResponse(f"/settings?lastfm_error={err}")
-    except Exception as e:
-        return RedirectResponse(f"/settings?lastfm_error={urllib.parse.quote(str(e))}")
+    except Exception:
+        return RedirectResponse("/settings?lastfm_error=connection+failed")
 
     # Step 2: store token, redirect user to Last.fm auth page
     _pending_lastfm_token = token
@@ -544,8 +574,8 @@ async def lastfm_auth_callback():
             return RedirectResponse(f"/settings?lastfm_connected={urllib.parse.quote(username)}")
         err_msg = data.get("message", "no session key returned")
         return RedirectResponse(f"/settings?lastfm_error={urllib.parse.quote(err_msg)}")
-    except Exception as e:
-        return RedirectResponse(f"/settings?lastfm_error={urllib.parse.quote(str(e))}")
+    except Exception:
+        return RedirectResponse("/settings?lastfm_error=connection+failed")
 
 
 @router.post("/auth/lastfm/disconnect")

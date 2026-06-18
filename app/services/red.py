@@ -1,6 +1,6 @@
 import html
 import httpx
-from app.config import settings
+from app.services.redacted import ordered_tracker_clients
 
 _client = None
 
@@ -13,14 +13,15 @@ def _get_client():
 
 
 async def get_top_albums(period: str = "week", limit: int = 10) -> list[dict]:
-    """Fetch top torrents from RED and return as album dicts."""
-    if not settings.red_api_key:
+    """Fetch top torrents from the primary configured tracker."""
+    client = next((item for item in ordered_tracker_clients() if item.is_configured()), None)
+    if client is None:
         return []
     try:
         r = await _get_client().get(
-            "https://redacted.sh/ajax.php",
+            client.BASE_URL,
             params={"action": "top10", "type": "torrents", "limit": limit, "way": period},
-            headers={"Authorization": settings.red_api_key},
+            headers={"Authorization": client.authorization_header},
         )
         data = r.json()
         if data.get("status") != "success":
@@ -44,6 +45,8 @@ async def get_top_albums(period: str = "week", limit: int = 10) -> list[dict]:
                 "year": str(group.get("groupYear", "")),
                 "mb_id": "",
                 "snatched": group.get("totalSnatched", 0),
+                "tracker_label": client.label,
+                "tracker_site": client.SITE_URL,
             })
             if len(results) >= limit:
                 break
