@@ -10,12 +10,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from app.services.redacted import (
     current_media_scores,
+    enabled_tracker_names,
     media_score_summary,
     normalize_quality_profile,
+    normalize_tracker_name,
     normalize_token_mode,
     ops_client,
+    ordered_tracker_names,
     quality_profile_label,
-    red_client,
+    tracker_token_mode,
     token_mode_label,
     tracker_client_for,
     torrent_media_score,
@@ -49,7 +52,12 @@ def _fmt_size(b: int) -> str:
 
 _TOKEN_RE = re.compile(r"[a-z0-9]+")
 _STRICT_TEXT_RE = re.compile(r"[\w]+", re.UNICODE)
-OPS_CROSS_SEED_MATCH_POLICY = "payload-map-v2"
+CROSS_SEED_MATCH_POLICY = "payload-map-v2"
+OPS_CROSS_SEED_MATCH_POLICY = CROSS_SEED_MATCH_POLICY
+TRACKER_CROSS_SEED_TARGET = {
+    "red": "ops",
+    "ops": "red",
+}
 _VARIOUS_ARTIST_KEYS = {"various", "various artists", "v a", "va"}
 
 
@@ -168,7 +176,7 @@ def _build_torrent_rows(
     artist: str,
     album: str,
     year: str,
-    token_mode: str,
+    token_mode: str | dict[str, str],
     quality_profile: str,
     media_scores: dict[str, int],
 ) -> list[dict]:
@@ -176,6 +184,11 @@ def _build_torrent_rows(
     for group in groups:
         group_id = group.get("groupId")
         tracker = group.get("_redwave_tracker", "red")
+        row_token_mode = (
+            normalize_token_mode(token_mode.get(tracker))
+            if isinstance(token_mode, dict)
+            else normalize_token_mode(token_mode)
+        )
         tracker_label = group.get("_redwave_tracker_label", "RED" if tracker == "red" else "OPS")
         group_url = group.get("_redwave_group_url") or tracker_client_for(tracker).group_url(group_id)
         g_artist = group.get("artist", artist)
@@ -214,9 +227,9 @@ def _build_torrent_rows(
             log_score = t.get("logScore", 0)
             has_cue = t.get("hasCue", False)
             free = _is_freeleech(t)
-            can_use_token = tracker == "red" and bool(t.get("canUseToken"))
-            will_use_token = tracker == "red" and token_mode in ("preferred", "required") and can_use_token and not free
-            if tracker == "red" and token_mode == "required" and not can_use_token and not free:
+            can_use_token = bool(t.get("canUseToken"))
+            will_use_token = row_token_mode in ("preferred", "required") and can_use_token and not free
+            if row_token_mode == "required" and not can_use_token and not free:
                 continue
             seeders = t.get("seeders", 0)
             leechers = t.get("leechers", 0)
@@ -266,7 +279,7 @@ def _build_torrent_rows(
                 "freeleech": free,
                 "can_use_token": can_use_token,
                 "will_use_token": will_use_token,
-                "token_mode": token_mode,
+                "token_mode": row_token_mode,
                 "quality_profile": quality_profile,
                 "media_score": torrent_media_score(t, media_scores),
                 "preference_score": torrent_preference_score(t, quality_profile, media_scores),
@@ -289,29 +302,40 @@ def _sort_torrent_rows(
     torrent_list: list[dict],
     quality_profile: str,
     media_scores: dict[str, int],
+    primary_tracker: str | None = None,
 ) -> list[dict]:
+    primary_tracker = normalize_tracker_name(primary_tracker or settings.primary_tracker)
     torrent_list.sort(key=lambda x: (
         -x["match_score"],
-        0 if x.get("tracker") == "red" else 1,
+        0 if x.get("tracker") == primary_tracker else 1,
         torrent_preference_sort_key(x, quality_profile, media_scores),
         -x["seeders"],
     ))
     return torrent_list
 
 
-def _source_note(red_count: int, ops_count: int, ops_configured: bool, track_fallback_count: int = 0) -> str:
+def _source_note(
+    red_count: int,
+    ops_count: int,
+    ops_configured: bool,
+    track_fallback_count: int = 0,
+    active_trackers: list[str] | None = None,
+) -> str:
+    active_trackers = active_trackers or ["red", "ops"]
     if red_count and ops_count:
         note = f"Showing RED and OPS results ({red_count} RED, {ops_count} OPS)."
     elif red_count:
-        note = "Showing RED results." if ops_configured else "Showing RED results. Add an OPS API key in Settings to compare both trackers."
+        note = "Showing RED results."
+        if "ops" in active_trackers and not ops_configured:
+            note += " Add an OPS API key in Settings to compare both trackers."
     elif ops_count:
-        note = "RED had no matching release. Showing OPS results."
+        note = "Showing OPS results."
     else:
         note = ""
 
     if track_fallback_count:
         suffix = (
-            f"Included {track_fallback_count} RED result"
+            f"Included {track_fallback_count} result"
             f"{'' if track_fallback_count == 1 else 's'} matched by album track titles."
         )
         return f"{note} {suffix}".strip()
@@ -345,7 +369,12 @@ def _same_quality_value(wanted: str, found: str) -> bool:
     return _match_text(wanted) == _match_text(found)
 
 
-async def _find_ops_cross_seed_match(
+def _cross_seed_client_for(target_tracker: str):
+    return ops_client if target_tracker == "ops" else tracker_client_for(target_tracker)
+
+
+async def _find_cross_seed_match(
+    target_tracker: str,
     artist: str,
     album: str,
     year: str,
@@ -359,16 +388,24 @@ async def _find_ops_cross_seed_match(
     selected_remaster: str = "",
     selected_manifest: TorrentManifest | None = None,
 ) -> dict | None:
-    if not _truthy(settings.ops_cross_seed) or not ops_client.is_configured() or size_bytes <= 0 or not selected_manifest:
+    target_tracker = normalize_tracker_name(target_tracker)
+    target_client = _cross_seed_client_for(target_tracker)
+    if (
+        target_tracker not in enabled_tracker_names()
+        or not _truthy(settings.ops_cross_seed)
+        or not target_client.is_configured()
+        or size_bytes <= 0
+        or not selected_manifest
+    ):
         return None
 
     try:
-        ops_results = await ops_client.search_torrents(artist, normalize_album(album))
+        target_results = await target_client.search_torrents(artist, normalize_album(album))
     except Exception:
         return None
 
     rows = _build_torrent_rows(
-        ops_results,
+        target_results,
         artist,
         normalize_album(album),
         year,
@@ -390,17 +427,48 @@ async def _find_ops_cross_seed_match(
         if not _same_quality_value(selected_remaster, row.get("remaster", "")):
             continue
         try:
-            ops_torrent_bytes = await ops_client.get_torrent_file(int(row.get("torrent_id") or 0), use_token=False)
-            ops_manifest = parse_torrent_manifest(ops_torrent_bytes)
+            target_torrent_bytes = await target_client.get_torrent_file(int(row.get("torrent_id") or 0), use_token=False)
+            target_manifest = parse_torrent_manifest(target_torrent_bytes)
         except Exception:
             continue
-        payload_match = compare_torrent_payloads(selected_manifest, ops_manifest)
+        payload_match = compare_torrent_payloads(selected_manifest, target_manifest)
         if not payload_match.compatible:
             continue
-        row["torrent_manifest"] = ops_manifest.to_dict()
+        row["torrent_manifest"] = target_manifest.to_dict()
         row["payload_match"] = payload_match.to_dict()
         return row
     return None
+
+
+async def _find_ops_cross_seed_match(
+    artist: str,
+    album: str,
+    year: str,
+    size_bytes: int,
+    token_mode: str,
+    quality_profile: str,
+    media_scores: dict[str, int],
+    selected_format: str = "",
+    selected_encoding: str = "",
+    selected_media: str = "",
+    selected_remaster: str = "",
+    selected_manifest: TorrentManifest | None = None,
+) -> dict | None:
+    return await _find_cross_seed_match(
+        "ops",
+        artist,
+        album,
+        year,
+        size_bytes,
+        token_mode,
+        quality_profile,
+        media_scores,
+        selected_format=selected_format,
+        selected_encoding=selected_encoding,
+        selected_media=selected_media,
+        selected_remaster=selected_remaster,
+        selected_manifest=selected_manifest,
+    )
 
 
 @router.get("/torrents/search", response_class=HTMLResponse)
@@ -415,81 +483,110 @@ async def search_torrents(
     db: AsyncSession = Depends(get_db),
 ):
     search_album = normalize_album(album)
-    token_mode = normalize_token_mode(settings.red_use_freeleech_token)
+    active_trackers = enabled_tracker_names()
+    primary_tracker = normalize_tracker_name(settings.primary_tracker)
+    token_modes = {name: tracker_token_mode(name) for name in active_trackers}
     quality_profile = normalize_quality_profile(settings.red_quality_profile)
     media_scores = current_media_scores()
-    red_error = ""
-    ops_error = ""
+    errors: dict[str, str] = {}
 
-    async def _search_red() -> list[dict]:
-        nonlocal red_error
+    async def _search_tracker(tracker: str) -> tuple[str, list[dict]]:
+        client = tracker_client_for(tracker)
+        if not client.is_configured():
+            return tracker, []
         try:
-            return await red_client.search_torrents(artist, search_album)
-        except ValueError as e:
-            red_error = str(e)
-            return []
+            groups = await client.search_torrents(artist, search_album)
+            groups.sort(
+                key=lambda group: _group_match_score(group, artist, search_album, year),
+                reverse=True,
+            )
+            return tracker, groups
+        except ValueError as exc:
+            errors[tracker] = str(exc)
+            return tracker, []
         except Exception:
-            return []
+            return tracker, []
 
-    async def _search_ops() -> list[dict]:
-        nonlocal ops_error
-        if not ops_client.is_configured():
-            return []
-        try:
-            return await ops_client.search_torrents(artist, search_album)
-        except ValueError as e:
-            ops_error = str(e)
-            return []
-        except Exception:
-            return []
+    search_results = dict(await asyncio.gather(*(_search_tracker(name) for name in active_trackers)))
+    rows_by_tracker = {
+        name: _build_torrent_rows(
+            search_results.get(name, []),
+            artist,
+            search_album,
+            year,
+            token_modes,
+            quality_profile,
+            media_scores,
+        )
+        for name in active_trackers
+    }
 
-    red_results, ops_results = await asyncio.gather(_search_red(), _search_ops())
-
-    red_results = sorted(
-        red_results,
-        key=lambda group: _group_match_score(group, artist, search_album, year),
-        reverse=True,
-    )
-    ops_results = sorted(
-        ops_results,
-        key=lambda group: _group_match_score(group, artist, search_album, year),
-        reverse=True,
-    )
-
-    red_rows = _build_torrent_rows(
-        red_results, artist, search_album, year, token_mode, quality_profile, media_scores
-    )
-    ops_rows = _build_torrent_rows(
-        ops_results, artist, search_album, year, token_mode, quality_profile, media_scores
-    )
-
-    can_track_fallback = bool(not red_rows and not red_error)
-    if track_fallback and not red_rows and not red_error:
+    has_rows = any(rows_by_tracker.values())
+    can_track_fallback = bool(not has_rows and not errors)
+    if track_fallback and not has_rows and not errors:
         tracks = await _album_tracks_for_tracker_fallback(artist, album, search_album, year, mb_id)
         can_track_fallback = False
         if tracks:
-            try:
-                red_track_results = await red_client.search_torrents_by_tracks(artist, search_album, tracks)
-                red_rows = _build_torrent_rows(
-                    red_track_results,
-                    artist,
-                    search_album,
-                    year,
-                    token_mode,
-                    quality_profile,
-                    media_scores,
-                )
-            except ValueError as e:
-                red_error = str(e)
-            except Exception:
-                red_rows = []
+            async def _search_tracks(tracker: str) -> tuple[str, list[dict]]:
+                client = tracker_client_for(tracker)
+                if not client.is_configured():
+                    return tracker, []
+                try:
+                    groups = await client.search_torrents_by_tracks(artist, search_album, tracks)
+                    return tracker, _build_torrent_rows(
+                        groups,
+                        artist,
+                        search_album,
+                        year,
+                        token_modes,
+                        quality_profile,
+                        media_scores,
+                    )
+                except ValueError as exc:
+                    errors[tracker] = str(exc)
+                    return tracker, []
+                except Exception:
+                    return tracker, []
 
-    torrent_list = _sort_torrent_rows(red_rows + ops_rows, quality_profile, media_scores)
-    track_fallback_count = sum(1 for row in red_rows if row.get("match_source") == "track")
-    source_note = _source_note(len(red_rows), len(ops_rows), ops_client.is_configured(), track_fallback_count)
-    ops_cross_seed_enabled = _truthy(settings.ops_cross_seed) and ops_client.is_configured()
+            rows_by_tracker.update(
+                dict(await asyncio.gather(*(_search_tracks(name) for name in active_trackers)))
+            )
 
-    error = " / ".join(e for e in (red_error, ops_error) if e) if not torrent_list else ""
+    torrent_list = _sort_torrent_rows(
+        [row for name in active_trackers for row in rows_by_tracker.get(name, [])],
+        quality_profile,
+        media_scores,
+        primary_tracker=primary_tracker,
+    )
+    red_rows = rows_by_tracker.get("red", [])
+    ops_rows = rows_by_tracker.get("ops", [])
+    track_fallback_count = sum(1 for row in torrent_list if row.get("match_source") == "track")
+    source_note = _source_note(
+        len(red_rows),
+        len(ops_rows),
+        ops_client.is_configured(),
+        track_fallback_count,
+        active_trackers,
+    )
+    cross_seed_enabled = (
+        "red" in active_trackers
+        and "ops" in active_trackers
+        and _truthy(settings.ops_cross_seed)
+        and tracker_client_for("red").is_configured()
+        and ops_client.is_configured()
+    )
+
+    configured_active = [name for name in active_trackers if tracker_client_for(name).is_configured()]
+    if not configured_active:
+        labels = " or ".join(tracker_client_for(name).label for name in active_trackers)
+        error = f"No {labels} API key is configured."
+    else:
+        error = " / ".join(errors.values()) if not torrent_list else ""
+    active_tracker_labels = [tracker_client_for(name).label for name in ordered_tracker_names()]
+    token_summary = " / ".join(
+        f"{tracker_client_for(name).label} {token_mode_label(token_modes[name])}"
+        for name in ordered_tracker_names()
+    )
 
     return templates.TemplateResponse("partials/torrent_picker.html", {
         "request": request,
@@ -501,14 +598,15 @@ async def search_torrents(
         "album": album,
         "year": year,
         "cover_url": cover_url,
-        "freeleech_token_mode": token_mode,
-        "freeleech_token_label": token_mode_label(token_mode),
+        "freeleech_token_label": token_summary,
         "quality_profile": quality_profile,
         "quality_profile_label": quality_profile_label(quality_profile),
         "media_score_summary": media_score_summary(media_scores),
-        "ops_cross_seed_enabled": ops_cross_seed_enabled,
+        "cross_seed_enabled": cross_seed_enabled,
+        "ops_cross_seed_enabled": cross_seed_enabled,
         "can_track_fallback": can_track_fallback and not track_fallback,
         "track_fallback_active": track_fallback,
+        "active_tracker_labels": active_tracker_labels,
     })
 
 
@@ -539,10 +637,10 @@ async def grab_torrent(
     tracker_client = tracker_client_for(tracker)
     media = form.get("media", "")
     remaster = form.get("remaster", "")
-    token_mode = normalize_token_mode(settings.red_use_freeleech_token)
     quality_profile = normalize_quality_profile(settings.red_quality_profile)
     media_scores = current_media_scores()
     cross_seed_status = ""
+    cross_seed_target_label = ""
     grab_error = ""
 
     # Create or get existing request
@@ -567,9 +665,13 @@ async def grab_torrent(
     # Download torrent file and send to qBittorrent
     raw_json = {"tracker": tracker}
     try:
+        if tracker not in enabled_tracker_names():
+            raise ValueError(f"{tracker_client.label} is disabled in Tracker Search Mode.")
+        if not tracker_client.is_configured():
+            raise ValueError(f"{tracker_client.label} API key is not configured.")
         torrent_bytes = await tracker_client.get_torrent_file(
             red_torrent_id,
-            use_token=use_freeleech_token if tracker == "red" else False,
+            use_token=use_freeleech_token,
             token_mode=freeleech_token_mode,
         )
         selected_manifest = parse_torrent_manifest(torrent_bytes)
@@ -580,13 +682,22 @@ async def grab_torrent(
             if add_result.hashes:
                 album_request.qbt_hash = add_result.hashes[0]
                 raw_json["qbt_hash"] = add_result.hashes[0]
-            if tracker == "red" and _truthy(settings.ops_cross_seed):
-                ops_match = await _find_ops_cross_seed_match(
+            target_tracker = TRACKER_CROSS_SEED_TARGET.get(tracker, "")
+            if (
+                target_tracker
+                and target_tracker in enabled_tracker_names()
+                and _truthy(settings.ops_cross_seed)
+                and tracker_client_for(target_tracker).is_configured()
+            ):
+                target_client = tracker_client_for(target_tracker)
+                cross_seed_target_label = target_client.label
+                cross_seed_match = await _find_cross_seed_match(
+                    target_tracker,
                     artist,
                     album,
                     year,
                     size_bytes,
-                    token_mode,
+                    "never",
                     quality_profile,
                     media_scores,
                     selected_format=fmt,
@@ -595,29 +706,37 @@ async def grab_torrent(
                     selected_remaster=remaster,
                     selected_manifest=selected_manifest,
                 )
-                if ops_match:
+                if cross_seed_match:
                     raw_json["cross_seed"] = {
-                        "ops": {
+                        target_tracker: {
                             "status": "pending",
-                            "torrent_id": ops_match.get("torrent_id"),
-                            "group_id": ops_match.get("group_id"),
-                            "title": ops_match.get("title", ""),
-                            "size_bytes": ops_match.get("size_bytes", 0),
-                            "match_policy": OPS_CROSS_SEED_MATCH_POLICY,
-                            "match_mode": (ops_match.get("payload_match") or {}).get("match_mode", "exact"),
-                            "rename_map": (ops_match.get("payload_match") or {}).get("rename_map", {}),
-                            "torrent_manifest": ops_match.get("torrent_manifest"),
+                            "torrent_id": cross_seed_match.get("torrent_id"),
+                            "group_id": cross_seed_match.get("group_id"),
+                            "title": cross_seed_match.get("title", ""),
+                            "size_bytes": cross_seed_match.get("size_bytes", 0),
+                            "match_policy": CROSS_SEED_MATCH_POLICY,
+                            "match_mode": (cross_seed_match.get("payload_match") or {}).get("match_mode", "exact"),
+                            "rename_map": (cross_seed_match.get("payload_match") or {}).get("rename_map", {}),
+                            "torrent_manifest": cross_seed_match.get("torrent_manifest"),
                         }
                     }
                     cross_seed_status = "queued"
                 else:
-                    raw_json["cross_seed"] = {"ops": {"status": "no_match"}}
+                    raw_json["cross_seed"] = {target_tracker: {"status": "no_match"}}
                     cross_seed_status = "no_match"
         else:
             album_request.status = "failed"
     except Exception as e:
         album_request.status = "failed"
-        grab_error = str(e)
+        message = str(e)
+        if isinstance(e, ValueError) and (
+            message.startswith(("RED ", "OPS "))
+            or "freeleech token" in message.lower()
+            or "rate limit" in message.lower()
+        ):
+            grab_error = message
+        else:
+            grab_error = "Could not complete the grab. Check tracker and qBittorrent settings."
 
     raw_json["selected"] = {
         "tracker": tracker,
@@ -653,5 +772,7 @@ async def grab_torrent(
         "album": album,
         "tracker_label": tracker_client.label,
         "cross_seed_status": cross_seed_status,
+        "cross_seed_target_label": cross_seed_target_label,
+        "cross_seed_source_label": tracker_client.label,
         "grab_error": grab_error,
     })

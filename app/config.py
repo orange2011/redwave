@@ -6,6 +6,9 @@ class Settings(BaseSettings):
 
     red_api_key: str = ""
     red_use_freeleech_token: str = "never"  # never | preferred | required
+    ops_use_freeleech_token: str = "never"  # never | preferred | required
+    tracker_mode: str = "both"  # both | red | ops
+    primary_tracker: str = "red"  # red | ops
     red_quality_profile: str = "flac_any"
     red_media_preference: str = "cd"
     red_media_score_cd: int = 100
@@ -32,7 +35,7 @@ class Settings(BaseSettings):
     qbt_ops_tag: str = "OPS"
     ops_cross_seed: str = "0"
     database_url: str = "sqlite+aiosqlite:///./redwave.db"
-    musicbrainz_user_agent: str = "Redwave/1.0 (redwave@localhost)"
+    musicbrainz_user_agent: str = "Redwave/1.0 (redwave@example.invalid)"
     music_dir: str = ""
     navidrome_url: str = ""
     navidrome_user: str = ""

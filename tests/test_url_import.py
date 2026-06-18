@@ -127,13 +127,14 @@ class FakeRedClient:
 class UrlImportTests(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
         self._old_client = url_import._client
-        self._old_red_client = url_import.red_client
+        self._old_tracker_client_for = url_import.tracker_client_for
         url_import._client = FakeClient()
-        url_import.red_client = FakeRedClient()
+        self.fake_tracker = FakeRedClient()
+        url_import.tracker_client_for = lambda tracker: self.fake_tracker
 
     async def asyncTearDown(self):
         url_import._client = self._old_client
-        url_import.red_client = self._old_red_client
+        url_import.tracker_client_for = self._old_tracker_client_for
 
     async def test_lastfm_album_and_artist_urls(self):
         album = await url_import.resolve_url("https://www.last.fm/music/John+Denver/Poems,+Prayers+&+Promises")
@@ -199,6 +200,13 @@ class UrlImportTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("album note", album["red_summary"])
         self.assertEqual(artist["kind"], "artist")
         self.assertEqual(artist["artist"], "F.S. Blumm")
+
+    async def test_ops_urls(self):
+        album = await url_import.resolve_url("https://orpheus.network/torrents.php?id=2786495")
+        artist = await url_import.resolve_url("https://orpheus.network/artist.php?id=10530")
+        self.assertEqual(album["source"], "ops")
+        self.assertEqual(album["album"], "Wellen Formen")
+        self.assertEqual(artist["source"], "ops")
 
 
 if __name__ == "__main__":

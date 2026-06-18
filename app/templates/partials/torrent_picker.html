@@ -154,8 +154,8 @@
         <span>Preferred quality: <span style="color:var(--text); font-weight:600;">{{ quality_profile_label or "Any quality" }}</span></span>
         <span title="{{ media_score_summary or '' }}">Media scores: <span style="color:var(--text); font-weight:600;">custom ranking</span></span>
         <span>Freeleech tokens: <span style="color:var(--text); font-weight:600;">{{ freeleech_token_label }}</span></span>
-        {% if ops_cross_seed_enabled %}
-        <span title="For RED grabs, Redwave checks OPS after the RED torrent completes and only adds OPS when the payload matches or maps safely.">RED grabs: <span style="color:#c4b5fd; font-weight:600;">OPS safety check</span></span>
+        {% if cross_seed_enabled %}
+        <span title="After the grabbed torrent completes, Redwave checks the opposite tracker and only adds it when the payload matches or maps safely.">Cross-seed: <span style="color:#c4b5fd; font-weight:600;">RED/OPS safety check</span></span>
         {% endif %}
       </div>
       <table style="width:100%; border-collapse:collapse; font-size:0.8rem;">
@@ -225,8 +225,9 @@
             <td style="padding:.65rem 1rem;">
               <div class="tracker-badge-stack">
                 <span style="background:{{ '#c0392b' if t.tracker == 'red' else '#2563eb' }}; color:#fff; font-size:.65rem; font-weight:700; padding:.2rem .5rem; border-radius:.25rem; letter-spacing:.03em;">{{ t.tracker_label }}</span>
-                {% if t.tracker == "red" and ops_cross_seed_enabled %}
-                <span class="tracker-side-badge" title="OPS will be checked after RED completes; not added unless the payload is safe.">OPS check</span>
+                {% if cross_seed_enabled %}
+                {% set cross_seed_target_label = "OPS" if t.tracker == "red" else "RED" %}
+                <span class="tracker-side-badge" title="{{ cross_seed_target_label }} will be checked after {{ t.tracker_label }} completes; not added unless the payload is safe.">{{ cross_seed_target_label }} check</span>
                 {% elif t.tracker == "ops" %}
                 <span class="tracker-side-badge" title="This grabs the OPS torrent directly.">Direct</span>
                 {% endif %}
@@ -295,7 +296,7 @@
                 <input type="hidden" name="freeleech_token_mode" value="{{ t.token_mode }}">
                 <button type="submit"
                         class="torrent-grab-button">
-                  {% if t.tracker == "red" and ops_cross_seed_enabled %}Grab RED + OPS check{% else %}Grab {{ t.tracker_label }}{% endif %}
+                  {% if cross_seed_enabled %}Grab {{ t.tracker_label }} + {{ "OPS" if t.tracker == "red" else "RED" }} check{% else %}Grab {{ t.tracker_label }}{% endif %}
                 </button>
               </form>
             </td>
@@ -305,9 +306,9 @@
       </table>
       {% else %}
       <div style="padding:3rem; text-align:center; color:var(--subtle);">
-        <p>No results found on RED or OPS for this album.</p>
+        <p>No results found on {{ active_tracker_labels | join(" or ") }} for this album.</p>
         {% if can_track_fallback %}
-        <p style="font-size:.8rem; margin-top:.5rem; color:var(--subtle);">Try a slower tracklist search for uploads where the songs live under another RED group.</p>
+        <p style="font-size:.8rem; margin-top:.5rem; color:var(--subtle);">Try a slower tracklist search for uploads where the songs live under another tracker group.</p>
         <button type="button"
                 hx-get="/api/torrents/search?mb_id={{ mb_id }}&artist={{ artist | urlencode }}&album={{ album | urlencode }}&year={{ year }}&cover_url={{ cover_url | urlencode if cover_url else '' }}&track_fallback=1"
                 hx-target="#modal-container"

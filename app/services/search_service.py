@@ -465,7 +465,7 @@ async def _search_musicbrainz(query: str, limit: int = 10) -> list[dict]:
             r = await client.get(
                 "https://musicbrainz.org/ws/2/release-group",
                 params={"query": query, "fmt": "json", "limit": limit},
-                headers={"User-Agent": "Redwave/1.0 (redwave@localhost)"},
+                headers={"User-Agent": "Redwave/1.0 (redwave@example.invalid)"},
             )
             rgs = r.json().get("release-groups", [])
             results = []

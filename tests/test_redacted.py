@@ -13,6 +13,8 @@ from app.services.redacted import (
     media_score_summary,
     normalize_media_preference,
     normalize_quality_profile,
+    normalize_tracker_mode,
+    ordered_tracker_names,
     quality_profile_label,
     tracker_client_for,
     torrent_preference_sort_key,
@@ -67,6 +69,63 @@ class RedactedQualityTests(unittest.TestCase):
         self.assertEqual(tracker_client_for("red").label, "RED")
         self.assertEqual(tracker_client_for("ops").label, "OPS")
         self.assertEqual(tracker_client_for("unknown").label, "RED")
+
+    def test_tracker_modes_and_primary_order(self):
+        self.assertEqual(normalize_tracker_mode("unknown"), "both")
+        self.assertEqual(ordered_tracker_names("red", "ops"), ["red"])
+        self.assertEqual(ordered_tracker_names("ops", "red"), ["ops"])
+        self.assertEqual(ordered_tracker_names("both", "ops"), ["ops", "red"])
+
+    def test_ops_uses_recommended_token_authorization_header(self):
+        client = GazelleTrackerClient(
+            tracker="ops",
+            label="OPS",
+            base_url="https://ops.test/ajax.php",
+            site_url="https://ops.test",
+            api_key_attr="ops_api_key",
+        )
+        old_key = settings.ops_api_key
+        object.__setattr__(settings, "ops_api_key", "secret")
+        try:
+            self.assertEqual(client.authorization_header, "token secret")
+        finally:
+            asyncio.run(client._client.aclose())
+            object.__setattr__(settings, "ops_api_key", old_key)
+
+    def test_ops_preferred_token_retries_without_usetoken_parameter(self):
+        async def run():
+            client = GazelleTrackerClient(
+                tracker="ops",
+                label="OPS",
+                base_url="https://ops.test/ajax.php",
+                site_url="https://ops.test",
+                api_key_attr="ops_api_key",
+            )
+            old_key = settings.ops_api_key
+            old_client = client._client
+            object.__setattr__(settings, "ops_api_key", "secret")
+            requests = []
+
+            def handler(request):
+                requests.append(request)
+                if len(requests) == 1:
+                    return httpx.Response(200, content=b"You do not have any freeleech tokens left.")
+                return httpx.Response(200, content=b"d4:infode")
+
+            try:
+                client._client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+                content = await client.get_torrent_file(42, use_token=True, token_mode="preferred")
+            finally:
+                await client._client.aclose()
+                await old_client.aclose()
+                object.__setattr__(settings, "ops_api_key", old_key)
+
+            self.assertEqual(content, b"d4:infode")
+            self.assertEqual(requests[0].url.params.get("usetoken"), "1")
+            self.assertNotIn("usetoken", requests[1].url.params)
+            self.assertEqual(requests[0].headers["Authorization"], "token secret")
+
+        asyncio.run(run())
 
     def test_tracker_rate_limit_response_sets_backoff(self):
         async def run():

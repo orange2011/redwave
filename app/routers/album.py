@@ -13,7 +13,7 @@ from app.models.request import AlbumRequest
 from app.database import get_db
 from app.utils import find_collection_album, normalize_artist
 from app.services.navidrome import get_album_tracks, get_collection
-from app.services.redacted import red_client
+from app.services.redacted import ordered_tracker_clients
 
 router = APIRouter()
 _DASH_SPLIT_RE = re.compile(r"\s+-\s+")
@@ -79,16 +79,23 @@ async def _tracker_album_title_hint(artist: str, album: str, year: str) -> str:
     if not artist or not album or not year:
         return album
     try:
-        groups = await red_client.search_torrents(artist, album)
+        clients = ordered_tracker_clients()
     except Exception:
-        return album
+        clients = []
 
-    for group in groups:
-        if str(group.get("groupYear") or "")[:4] != str(year)[:4]:
+    for client in clients:
+        if not client.is_configured():
             continue
-        group_name = (group.get("groupName") or "").strip()
-        if group_name:
-            return group_name
+        try:
+            groups = await client.search_torrents(artist, album)
+        except Exception:
+            continue
+        for group in groups:
+            if str(group.get("groupYear") or "")[:4] != str(year)[:4]:
+                continue
+            group_name = (group.get("groupName") or "").strip()
+            if group_name:
+                return group_name
     return album
 
 

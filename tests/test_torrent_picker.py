@@ -6,10 +6,12 @@ from unittest.mock import AsyncMock, patch
 from app.config import settings
 from app.routers.api.torrents import (
     _build_torrent_rows,
+    _find_cross_seed_match,
     _find_ops_cross_seed_match,
     _match_text,
     _sort_torrent_rows,
     _source_note,
+    search_torrents as search_torrents_route,
 )
 from app.services.torrent_meta import parse_torrent_manifest
 
@@ -73,6 +75,37 @@ class TorrentPickerTests(unittest.TestCase):
         self.assertEqual(rows[0]["tracker_url"], "https://orpheus.network/torrents.php?id=123")
         self.assertFalse(rows[0]["will_use_token"])
         self.assertTrue(rows[0]["match_exact"])
+
+    def test_ops_rows_can_use_ops_token_policy(self):
+        groups = [{
+            "artist": "Mac Miller",
+            "groupName": "The Divine Feminine",
+            "groupYear": "2016",
+            "groupId": 123,
+            "_redwave_tracker": "ops",
+            "_redwave_tracker_label": "OPS",
+            "torrents": [{
+                "torrentId": 456,
+                "format": "FLAC",
+                "encoding": "Lossless",
+                "media": "CD",
+                "canUseToken": True,
+            }],
+        }]
+
+        rows = _build_torrent_rows(
+            groups,
+            artist="Mac Miller",
+            album="The Divine Feminine",
+            year="2016",
+            token_mode={"ops": "preferred"},
+            quality_profile="flac_any",
+            media_scores={"CD": 100},
+        )
+
+        self.assertTrue(rows[0]["can_use_token"])
+        self.assertTrue(rows[0]["will_use_token"])
+        self.assertEqual(rows[0]["token_mode"], "preferred")
 
     def test_rows_reject_same_artist_wrong_album_matches(self):
         groups = [
@@ -251,9 +284,10 @@ class TorrentPickerTests(unittest.TestCase):
         self.assertIn("torrent-sort-arrow", template)
         self.assertIn("defaultDirections", template)
         self.assertIn("Grab {{ t.tracker_label }}", template)
-        self.assertIn("OPS safety check", template)
-        self.assertIn("OPS check", template)
-        self.assertIn("Grab RED + OPS check", template)
+        self.assertIn("RED/OPS safety check", template)
+        self.assertIn('cross_seed_target_label = "OPS" if t.tracker == "red" else "RED"', template)
+        self.assertIn("{{ cross_seed_target_label }} check", template)
+        self.assertIn('Grab {{ t.tracker_label }} + {{ "OPS" if t.tracker == "red" else "RED" }} check', template)
         self.assertIn("torrent-picker-overlay", template)
         self.assertIn("torrent-row:hover", template)
         self.assertIn("torrent-grab-button", template)
@@ -267,7 +301,7 @@ class TorrentPickerTests(unittest.TestCase):
         self.assertIn("tracklist-search-spinner", template)
         self.assertIn("torrent-button-spinner", template)
 
-    def test_combined_tracker_rows_prefer_red_before_equal_ops(self):
+    def test_combined_tracker_rows_follow_primary_tracker(self):
         rows = [
             {
                 "tracker": "ops",
@@ -287,9 +321,9 @@ class TorrentPickerTests(unittest.TestCase):
             },
         ]
 
-        sorted_rows = _sort_torrent_rows(rows, "flac_any", {"CD": 100})
+        sorted_rows = _sort_torrent_rows(rows, "flac_any", {"CD": 100}, primary_tracker="ops")
 
-        self.assertEqual([row["tracker"] for row in sorted_rows], ["red", "ops"])
+        self.assertEqual([row["tracker"] for row in sorted_rows], ["ops", "red"])
 
     def test_source_note_mentions_both_trackers(self):
         self.assertEqual(
@@ -302,6 +336,136 @@ class TorrentPickerTests(unittest.TestCase):
             "album track titles",
             _source_note(1, 0, True, track_fallback_count=1),
         )
+
+    def test_ops_only_search_does_not_call_red(self):
+        async def run():
+            fake_red = type("FakeTracker", (), {"label": "RED"})()
+            fake_ops = type("FakeTracker", (), {"label": "OPS"})()
+            fake_red.is_configured = lambda: True
+            fake_ops.is_configured = lambda: True
+            fake_red.search_torrents = AsyncMock(side_effect=AssertionError("RED should not be called"))
+            fake_ops.search_torrents = AsyncMock(return_value=[{
+                "artist": "Deary",
+                "groupName": "Birding",
+                "groupYear": "2024",
+                "groupId": 10,
+                "_redwave_tracker": "ops",
+                "_redwave_tracker_label": "OPS",
+                "_redwave_group_url": "https://orpheus.network/torrents.php?id=10",
+                "torrents": [{
+                    "torrentId": 20,
+                    "format": "FLAC",
+                    "encoding": "Lossless",
+                    "media": "WEB",
+                    "size": 100,
+                }],
+            }])
+            fake_red.search_torrents_by_tracks = AsyncMock()
+            fake_ops.search_torrents_by_tracks = AsyncMock()
+
+            def client_for(name):
+                return fake_ops if name == "ops" else fake_red
+
+            old_mode = settings.tracker_mode
+            old_primary = settings.primary_tracker
+            object.__setattr__(settings, "tracker_mode", "ops")
+            object.__setattr__(settings, "primary_tracker", "ops")
+            try:
+                with (
+                    patch("app.routers.api.torrents.tracker_client_for", side_effect=client_for),
+                    patch("app.routers.api.torrents.ops_client", fake_ops),
+                    patch(
+                        "app.routers.api.torrents.templates.TemplateResponse",
+                        side_effect=lambda _name, context: context,
+                    ),
+                ):
+                    context = await search_torrents_route(
+                        request=object(),
+                        mb_id="_",
+                        artist="Deary",
+                        album="Birding",
+                        year="2024",
+                        db=None,
+                    )
+            finally:
+                object.__setattr__(settings, "tracker_mode", old_mode)
+                object.__setattr__(settings, "primary_tracker", old_primary)
+
+            self.assertEqual(fake_red.search_torrents.await_count, 0)
+            self.assertEqual(fake_ops.search_torrents.await_count, 1)
+            self.assertEqual([row["tracker"] for row in context["torrents"]], ["ops"])
+            self.assertEqual(context["active_tracker_labels"], ["OPS"])
+
+        asyncio.run(run())
+
+    def test_ops_only_track_fallback_does_not_call_red(self):
+        async def run():
+            fake_red = type("FakeTracker", (), {"label": "RED"})()
+            fake_ops = type("FakeTracker", (), {"label": "OPS"})()
+            fake_red.is_configured = lambda: True
+            fake_ops.is_configured = lambda: True
+            fake_red.search_torrents = AsyncMock(side_effect=AssertionError("RED should not be called"))
+            fake_red.search_torrents_by_tracks = AsyncMock(side_effect=AssertionError("RED should not be called"))
+            fake_ops.search_torrents = AsyncMock(return_value=[])
+            fake_ops.search_torrents_by_tracks = AsyncMock(return_value=[{
+                "artist": "Various Artists",
+                "groupName": "Compilation",
+                "groupYear": "2024",
+                "groupId": 11,
+                "_redwave_tracker": "ops",
+                "_redwave_tracker_label": "OPS",
+                "_redwave_group_url": "https://orpheus.network/torrents.php?id=11",
+                "_redwave_search_mode": "track_fallback",
+                "_redwave_track_hits": ["Birding", "Heavy Dream"],
+                "_redwave_track_artist_confirmed": True,
+                "torrents": [{
+                    "torrentId": 21,
+                    "format": "FLAC",
+                    "encoding": "Lossless",
+                    "media": "WEB",
+                    "size": 100,
+                }],
+            }])
+
+            def client_for(name):
+                return fake_ops if name == "ops" else fake_red
+
+            old_mode = settings.tracker_mode
+            old_primary = settings.primary_tracker
+            object.__setattr__(settings, "tracker_mode", "ops")
+            object.__setattr__(settings, "primary_tracker", "ops")
+            try:
+                with (
+                    patch("app.routers.api.torrents.tracker_client_for", side_effect=client_for),
+                    patch("app.routers.api.torrents.ops_client", fake_ops),
+                    patch(
+                        "app.routers.api.torrents._album_tracks_for_tracker_fallback",
+                        AsyncMock(return_value=[{"name": "Birding"}, {"name": "Heavy Dream"}]),
+                    ),
+                    patch(
+                        "app.routers.api.torrents.templates.TemplateResponse",
+                        side_effect=lambda _name, context: context,
+                    ),
+                ):
+                    context = await search_torrents_route(
+                        request=object(),
+                        mb_id="_",
+                        artist="Deary",
+                        album="Birding",
+                        year="2024",
+                        track_fallback=True,
+                        db=None,
+                    )
+            finally:
+                object.__setattr__(settings, "tracker_mode", old_mode)
+                object.__setattr__(settings, "primary_tracker", old_primary)
+
+            self.assertEqual(fake_red.search_torrents.await_count, 0)
+            self.assertEqual(fake_red.search_torrents_by_tracks.await_count, 0)
+            self.assertEqual(fake_ops.search_torrents_by_tracks.await_count, 1)
+            self.assertEqual(context["torrents"][0]["match_source"], "track")
+
+        asyncio.run(run())
 
     def test_ops_cross_seed_match_uses_exact_size(self):
         old_value = settings.ops_cross_seed
@@ -328,6 +492,57 @@ class TorrentPickerTests(unittest.TestCase):
         try:
             with patch("app.routers.api.torrents.ops_client", fake_ops):
                 match = asyncio.run(_find_ops_cross_seed_match(
+                    "Weezer",
+                    "Weezer",
+                    "2019",
+                    222,
+                    "never",
+                    "flac_any",
+                    {"CD": 100, "WEB": 50},
+                    selected_format="MP3",
+                    selected_encoding="320",
+                    selected_media="WEB",
+                    selected_manifest=parse_torrent_manifest(selected_bytes),
+                ))
+        finally:
+            object.__setattr__(settings, "ops_cross_seed", old_value)
+
+        self.assertIsNotNone(match)
+        self.assertEqual(match["torrent_id"], 2)
+
+    def test_red_cross_seed_match_uses_exact_size(self):
+        old_value = settings.ops_cross_seed
+        object.__setattr__(settings, "ops_cross_seed", "1")
+        selected_bytes = _torrent_bytes("Ops Root", [("01 Track.mp3", 222)], pieces=b"m" * 20)
+        red_bytes = _torrent_bytes("Red Root", [("01 Track.mp3", 222)], pieces=b"m" * 20)
+        fake_red = type("FakeRed", (), {"label": "RED"})()
+        fake_red.is_configured = lambda: True
+        fake_red.group_url = lambda group_id: f"https://redacted.sh/torrents.php?id={group_id}"
+        fake_red.search_torrents = AsyncMock(return_value=[
+            {
+                "artist": "Weezer",
+                "groupName": "Weezer",
+                "groupYear": "2019",
+                "groupId": 10,
+                "_redwave_tracker": "red",
+                "_redwave_tracker_label": "RED",
+                "_redwave_group_url": "https://redacted.sh/torrents.php?id=10",
+                "torrents": [
+                    {"torrentId": 1, "format": "FLAC", "encoding": "Lossless", "media": "CD", "size": 111},
+                    {"torrentId": 2, "format": "MP3", "encoding": "320", "media": "WEB", "size": 222},
+                ],
+            }
+        ])
+        fake_red.get_torrent_file = AsyncMock(return_value=red_bytes)
+        fake_ops = type("FakeOps", (), {"label": "OPS"})()
+
+        def client_for(name):
+            return fake_red if name == "red" else fake_ops
+
+        try:
+            with patch("app.routers.api.torrents.tracker_client_for", side_effect=client_for):
+                match = asyncio.run(_find_cross_seed_match(
+                    "red",
                     "Weezer",
                     "Weezer",
                     "2019",
